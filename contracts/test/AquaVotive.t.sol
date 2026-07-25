@@ -52,7 +52,7 @@ contract AquaMock is IAqua {
 
     /// @dev What a router does on a fill: spend the maker's allowance.
     function simulateFill(address maker, address token, uint256 amount, address to) external {
-        IERC20(token).transferFrom(maker, to, amount);
+        require(IERC20(token).transferFrom(maker, to, amount), "fill failed");
     }
 }
 
@@ -124,7 +124,7 @@ contract AquaVotiveTest is VotiveTest {
         // delegates to. Cloning here is also what a deployment actually does.
         votive = AquaVotive(payable(Clones.clone(address(implementation2))));
         vm.prank(founder);
-        fundingToken.transfer(address(votive), FUNDING);
+        require(fundingToken.transfer(address(votive), FUNDING), "funding failed");
 
         // Real clocks, not the factory's zero-means-default sentinel: opening this
         // way bypasses the factory that would have filled them in.
