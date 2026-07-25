@@ -33,6 +33,28 @@ real clock to the wei.
 Lifecycle proven on `0x66293C4560ef31F748D4FB6E747880aE5Eb28F15` — opened with
 1 HBAR, attested, attempted, fulfilled.
 
+### AgentBountyRail — agentic payments
+
+| contract | address |
+|---|---|
+| `AgentBountyRail` | `0x65E76108610933d69046b68070aFbc925B363e9e` |
+
+A complete agent payment cycle, executed on Hedera testnet with real HBAR:
+
+| step | on-chain result |
+|---|---|
+| `registerAgent` | agent's payout address recorded |
+| `attestCapability` | the frontier gate opened for the task |
+| `postBounty` (3 ℏ) | `escrowed() == 300000000` tinybar |
+| `claim` | agent took the exclusive claim |
+| `release` × 3 | `credited` walked 1 ℏ → 2 ℏ → 3 ℏ |
+| `withdraw` | `credited == 0`, rail balance `0`, `creditedTotal == 0` |
+
+Final state: `earned == 300000000`, `milestonesDelivered == 3`, `escrowed() == 0`.
+Three separate on-chain payments, each gated on its own attestation, settled to a
+payout address the agent nominated — and one withdrawal to collect them, which is
+the reason earnings are credited rather than pushed.
+
 ### One thing to know about Hedera
 
 `eth_getBalance` reports 18 decimals while the EVM itself denominates `msg.value`
