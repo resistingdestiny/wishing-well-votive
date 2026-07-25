@@ -11,6 +11,14 @@ versions.
 
 ### Added
 
+- `AttestationRegistry` — the protocol's record of what has been demonstrated and
+  what has come true. Stores capability verdicts per (capability, model) and
+  release-condition verdicts per (votive, condition), binds each votive to the
+  capability it requires, and exposes the two gates the protocol reads:
+  `isCapabilityOpen` and `isConditionMet`. Attestor and factory keys are
+  rotatable by a two-step owner; the registry never custodies funds.
+- `IAccessGate` and `OpenAccessGate` — the admission check consulted once at
+  creation, with a stateless, ownerless, permit-everyone default.
 - Foundry project scaffold: pinned Solidity `0.8.28` / `cancun`, optimizer at 200
   runs, warnings promoted to build errors, fuzz and invariant profiles, and a
   heavier `ci` profile.

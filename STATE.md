@@ -29,10 +29,12 @@ failing test.
 
 - [x] **1. Scaffold** — Foundry project, pinned toolchain, dependency submodules,
       CI, license, docs skeleton.
-- [ ] **2. Types, access gate, oracle** — `VotiveTypes`, `IAccessGate` +
-      `OpenAccessGate`, `CapabilityOracle`.
-- [ ] **3. Core votive** — `VotiveBase` (lifecycle, fee engine, settlement,
-      redirect, escheat, owed ledger), `NativeVotive`, `VotiveFactory`.
+- [x] **2. Attestation layer** — `AttestationRegistry` (capability attestations
+      per model, release-condition attestations per votive, votive→capability
+      binding), `IAccessGate` + `OpenAccessGate`.
+- [ ] **3. Core votive** — `VotiveTypes`, `VotiveBase` (lifecycle, fee engine,
+      settlement, redirect, escheat, owed ledger), `NativeVotive`,
+      `VotiveFactory`.
 - [ ] **4. Token votive** — `TokenVotive`, ERC-20 creation path, funding-token
       allowlist.
 - [ ] **5. Multi-party settlement** — pro-rata distribution to the active set and
