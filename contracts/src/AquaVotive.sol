@@ -50,6 +50,8 @@ contract AquaVotive is TokenVotive {
     address public quoteToken;
     /// @notice How much of the principal was offered to the strategy.
     uint256 public offered;
+    /// @notice The asking price, as the quote-side reserve the curve prices against.
+    uint256 public askingReserve;
 
     event PositionOpened(
         bytes32 indexed strategyHash,
@@ -64,6 +66,7 @@ contract AquaVotive is TokenVotive {
     error NoPositionOpen();
     error OffersMoreThanParked(uint256 offered, uint256 parked);
     error QuoteTokenIsFundingToken();
+    error AskingPriceRequired();
 
     /// @notice Point this votive at an Aqua deployment. Callable once, by the
     ///         founder, before any position is opened.
@@ -85,7 +88,18 @@ contract AquaVotive is TokenVotive {
     ///        disagree with the first.
     /// @param quoteToken_ What a filler pays in.
     /// @param offer How much of the principal to make available.
-    function shipToAqua(bytes calldata strategy, address quoteToken_, uint256 offer)
+    /// @param asking The quote-side reserve, which is how the curve learns what
+    ///        this wish is asking. It is priced against, never paid out — a filler
+    ///        pays the quote token *to* this votive — so declaring a reserve of a
+    ///        token the votive does not hold is safe and is the only way to name a
+    ///        price at all.
+    ///
+    /// @dev The first version of this hardcoded the quote side to zero, reasoning
+    ///      that a votive sells what it holds rather than making a two-sided
+    ///      market. That reasoning was wrong in a way that could not be seen from
+    ///      the outside: `XYCSwap` requires both reserves non-zero, so the position
+    ///      shipped perfectly and could never be filled by anybody.
+    function shipToAqua(bytes calldata strategy, address quoteToken_, uint256 offer, uint256 asking)
         external
         onlyLive
         onlyFounder
@@ -104,6 +118,7 @@ contract AquaVotive is TokenVotive {
         // already earned and not yet taken.
         uint256 available = parked();
         if (offer == 0 || offer > available) revert OffersMoreThanParked(offer, available);
+        if (asking == 0) revert AskingPriceRequired();
 
         // Bounded, not infinite. Aqua may spend exactly what was offered.
         IERC20(token).forceApprove(address(aqua), offer);
@@ -113,15 +128,16 @@ contract AquaVotive is TokenVotive {
         tokens[1] = quoteToken_;
         uint256[] memory amounts = new uint256[](2);
         amounts[0] = offer;
-        // Nothing of the quote token is offered: this votive is selling what it
-        // holds, not making a two-sided market.
-        amounts[1] = 0;
+        // The asking price. The curve needs a reserve on both sides to quote at
+        // all; this one is never spent, only priced against.
+        amounts[1] = asking;
 
         hash = aqua.ship(router, strategy, tokens, amounts);
 
         strategyHash = hash;
         quoteToken = quoteToken_;
         offered = offer;
+        askingReserve = asking;
 
         emit PositionOpened(hash, router, quoteToken_, offer);
     }
@@ -143,6 +159,7 @@ contract AquaVotive is TokenVotive {
         bytes32 closing = strategyHash;
         strategyHash = bytes32(0);
         offered = 0;
+        askingReserve = 0;
 
         // Allowance first, so a reverting `dock` cannot leave one standing.
         IERC20(token).forceApprove(address(aqua), 0);

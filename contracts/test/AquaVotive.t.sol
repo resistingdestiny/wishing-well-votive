@@ -154,10 +154,9 @@ contract AquaVotiveTest is VotiveTest {
 
     function _ship(uint256 offer) internal returns (bytes32) {
         vm.prank(founder);
-        return
-            votive.shipToAqua(
-                abi.encode("a program with the gates in it"), address(quoteToken), offer
-            );
+        return votive.shipToAqua(
+            abi.encode("a program with the gates in it"), address(quoteToken), offer, 2 * offer
+        );
     }
 
     // -------------------------------------------------------- opening it
@@ -204,7 +203,7 @@ contract AquaVotiveTest is VotiveTest {
 
         vm.prank(stranger);
         vm.expectRevert(VotiveBase.NotFounder.selector);
-        votive.shipToAqua(abi.encode("p"), address(quoteToken), 10e18);
+        votive.shipToAqua(abi.encode("p"), address(quoteToken), 10e18, 20e18);
     }
 
     function test_configuringIsAlsoTheFoundersCall() public {
@@ -223,14 +222,24 @@ contract AquaVotiveTest is VotiveTest {
         vm.expectRevert(
             abi.encodeWithSelector(AquaVotive.OffersMoreThanParked.selector, parked + 1, parked)
         );
-        votive.shipToAqua(abi.encode("p"), address(quoteToken), parked + 1);
+        votive.shipToAqua(abi.encode("p"), address(quoteToken), parked + 1, 1e18);
+    }
+
+    /// The curve requires a reserve on both sides, so a position with no asking
+    /// price ships perfectly and can never be filled by anybody. Refusing it here
+    /// turns an invisible defect into a visible one.
+    function test_aPositionWithoutAnAskingPriceIsRefused() public {
+        _configure();
+        vm.prank(founder);
+        vm.expectRevert(AquaVotive.AskingPriceRequired.selector);
+        votive.shipToAqua(abi.encode("p"), address(quoteToken), 10e18, 0);
     }
 
     function test_anEmptyOfferIsRefused() public {
         _configure();
         vm.prank(founder);
         vm.expectRevert();
-        votive.shipToAqua(abi.encode("p"), address(quoteToken), 0);
+        votive.shipToAqua(abi.encode("p"), address(quoteToken), 0, 1e18);
     }
 
     /// A pair of one token is not a market, and would let a fill round-trip the
@@ -239,13 +248,13 @@ contract AquaVotiveTest is VotiveTest {
         _configure();
         vm.prank(founder);
         vm.expectRevert(AquaVotive.QuoteTokenIsFundingToken.selector);
-        votive.shipToAqua(abi.encode("p"), address(fundingToken), 10e18);
+        votive.shipToAqua(abi.encode("p"), address(fundingToken), 10e18, 20e18);
     }
 
     function test_shippingNeedsAquaConfiguredFirst() public {
         vm.prank(founder);
         vm.expectRevert(AquaVotive.AquaNotConfigured.selector);
-        votive.shipToAqua(abi.encode("p"), address(quoteToken), 10e18);
+        votive.shipToAqua(abi.encode("p"), address(quoteToken), 10e18, 20e18);
     }
 
     function test_onlyOnePositionAtATime() public {
@@ -254,7 +263,7 @@ contract AquaVotiveTest is VotiveTest {
 
         vm.prank(founder);
         vm.expectRevert(AquaVotive.PositionAlreadyOpen.selector);
-        votive.shipToAqua(abi.encode("another"), address(quoteToken), 10e18);
+        votive.shipToAqua(abi.encode("another"), address(quoteToken), 10e18, 20e18);
     }
 
     // -------------------------------------------------------- closing it
@@ -315,8 +324,12 @@ contract AquaVotiveTest is VotiveTest {
         _ship(250e18);
 
         (uint256 principalSide, uint256 quoteSide) = votive.positionBalances();
-        assertEq(principalSide, 250e18);
-        assertEq(quoteSide, 0, "this votive sells what it holds, it does not make a market");
+        assertEq(principalSide, 250e18, "the principal offered");
+        // The quote side is the asking price, not inventory. The votive holds none
+        // of this token and never pays any out — a filler pays it *in* — but the
+        // curve cannot quote without a reserve on both sides, so this is how a
+        // wish names its price.
+        assertEq(quoteSide, 500e18, "the asking price the curve prices against");
     }
 
     function test_anUnconfiguredVotiveReportsNoPosition() public view {
