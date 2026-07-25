@@ -13,7 +13,7 @@ import { noteTx } from "@/lib/noteTx";
 
 const aquaVotiveAbi = parseAbi([
   "function configureAqua(address aqua, address router)",
-  "function shipToAqua(bytes strategy, address quoteToken, uint256 offer) returns (bytes32)",
+  "function shipToAqua(bytes strategy, address quoteToken, uint256 offer, uint256 asking) returns (bytes32)",
   "function dockFromAqua()",
   "function isPositionOpen() view returns (bool)",
   "function offered() view returns (uint256)",
@@ -79,6 +79,7 @@ export function AquaActions({ votive, founder, positionOpen }: Props) {
   const client = usePublicClient();
 
   const [offer, setOffer] = useState("");
+  const [asking, setAsking] = useState("");
   const [busy, setBusy] = useState<"" | "ship" | "dock">("");
   const [error, setError] = useState("");
   const [done, setDone] = useState("");
@@ -116,6 +117,12 @@ export function AquaActions({ votive, founder, positionOpen }: Props) {
       );
       const amount = parseUnits(offer || "0", decimals);
       if (amount === 0n) throw new Error("Enter how much of the principal to offer.");
+      const askingAmount = parseUnits(asking || "0", decimals);
+      if (askingAmount === 0n) {
+        // The curve needs a reserve on both sides to quote at all. Without this a
+        // position ships perfectly and can never be filled by anybody.
+        throw new Error("Enter what you are asking for it.");
+      }
       if (amount > (parked as bigint)) {
         throw new Error("That is more than this wish has parked.");
       }
@@ -174,12 +181,12 @@ export function AquaActions({ votive, founder, positionOpen }: Props) {
         address: votive,
         abi: aquaVotiveAbi,
         functionName: "shipToAqua",
-        args: [strategy, QUOTE!, amount],
+        args: [strategy, QUOTE!, amount, askingAmount],
         chainId: appChain.id,
       });
       await client.waitForTransactionReceipt({ hash });
       noteTx("aqua-position-opened", hash, {
-        detail: `${offer} offered from this wish's own principal`,
+        detail: `${offer} offered from this wish's own principal, asking ${asking}`,
         contract: votive,
         subject: votive,
       });
@@ -243,7 +250,25 @@ export function AquaActions({ votive, founder, positionOpen }: Props) {
               inputMode="decimal"
             />
           </label>
-          <button className="btn" onClick={ship} disabled={busy !== "" || offer === ""}>
+          <label className="field">
+            <span>What you are asking for it</span>
+            <input
+              value={asking}
+              onChange={(e) => setAsking(e.target.value)}
+              placeholder="120"
+              inputMode="decimal"
+            />
+            <small className="dim">
+              The price the curve quotes against. You never pay this token — a
+              filler pays it to the wish — but without it the position could never
+              be filled at all.
+            </small>
+          </label>
+          <button
+            className="btn"
+            onClick={ship}
+            disabled={busy !== "" || offer === "" || asking === ""}
+          >
             {busy === "ship" ? "Opening…" : "Offer this wish as a position"}
           </button>
         </>
