@@ -5,7 +5,7 @@ accurate: someone who has never seen the project should be able to read this
 file and know exactly what exists, what is next, and what is blocked.
 
 **Last updated:** 2026-07-25
-**Current milestone:** M1 — protocol core (Solidity only)
+**Current milestone:** M1 — protocol core (Solidity only) — **complete**, 208 tests green
 
 ---
 
@@ -40,7 +40,8 @@ failing test.
 - [x] **5. Shared settlement** — the `ShareWithActive` wish kind: Merkle
       allocation over the live set, challenge window, claim window, leftover
       sweep, and the factory view the snapshot is built from. 196 tests.
-- [ ] **6. Hardening** — invariant suite, deployment script, gas snapshot.
+- [x] **6. Hardening** — invariant suite over randomised histories, deployment
+      script with no addresses in it, contract-size guard. 208 tests.
 
 ### Deliberately not in M1
 
