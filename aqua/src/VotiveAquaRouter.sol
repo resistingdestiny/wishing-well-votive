@@ -25,7 +25,12 @@ import {VotiveOpcodes} from "./VotiveOpcodes.sol";
 ///      own instruction shifts ours along without breaking either set.
 contract VotiveAquaRouter is AquaSwapVMRouter, VotiveOpcodes {
     /// @notice Number of votive-native instructions appended to the official set.
-    uint256 public constant VOTIVE_OPCODE_COUNT = 4;
+    ///
+    /// @dev Seven, in a fixed order that must only ever be appended to: three
+    ///      gates on the wish, a performance fee, two gates on the filler, and a
+    ///      bonus that pays a better-standing agent more. A program already
+    ///      encoded against these indices would mean something else if they moved.
+    uint256 public constant VOTIVE_OPCODE_COUNT = 7;
 
     constructor(address aqua, address weth, address owner)
         AquaSwapVMRouter(aqua, weth, owner, "VotiveAquaRouter", "1")
@@ -58,5 +63,9 @@ contract VotiveAquaRouter is AquaSwapVMRouter, VotiveOpcodes {
         result[base + 1] = _onlyConditionMet;
         result[base + 2] = _onlyVotiveLive;
         result[base + 3] = _votivePerformanceFeeAmountInXD;
+        // Who may fill, and what their record is worth.
+        result[base + 4] = _onlyHumanBackedFiller;
+        result[base + 5] = _onlyFillerInGoodStanding;
+        result[base + 6] = _fillerStandingBonusXD;
     }
 }

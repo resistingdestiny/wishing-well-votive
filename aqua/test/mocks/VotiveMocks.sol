@@ -39,3 +39,36 @@ contract VotiveMock {
         state = value;
     }
 }
+
+/// @notice Stands in for the protocol's human-backing registry.
+contract HumanBackingMock {
+    mapping(address => bytes32) public humanOf;
+    mapping(address => uint8) public assuranceOf;
+
+    function bind(address wallet, bytes32 humanId, uint8 tier) external {
+        humanOf[wallet] = humanId;
+        assuranceOf[wallet] = tier;
+    }
+}
+
+/// @notice Stands in for the protocol's standing ledger.
+contract StandingMock {
+    mapping(bytes32 => bool) public isBarred;
+    mapping(bytes32 => uint256) private _multiplier;
+
+    function setBarred(bytes32 humanId, bool value) external {
+        isBarred[humanId] = value;
+    }
+
+    function setMultiplier(bytes32 humanId, uint256 bps) external {
+        _multiplier[humanId] = bps;
+    }
+
+    /// @dev Mirrors the real ledger: barred is zero, and an operator nobody has
+    ///      recorded anything about sits at parity rather than at nothing.
+    function multiplierBpsOf(bytes32 humanId) external view returns (uint256) {
+        if (isBarred[humanId]) return 0;
+        uint256 m = _multiplier[humanId];
+        return m == 0 ? 10_000 : m;
+    }
+}
