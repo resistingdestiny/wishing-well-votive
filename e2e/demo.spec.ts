@@ -147,9 +147,10 @@ test.describe("the Aqua position", () => {
     await expect(heading).toContainText(/Base Sepolia/i);
 
     const body = page.locator("body");
-    // Four instructions appended to the official set — read from the router, so
-    // this fails if the opcode table ever shifted underneath us.
-    await expect(body).toContainText(/4 SwapVM instructions appended/i);
+    // Seven instructions appended to the official set — read from the router, so
+    // this fails if the opcode table ever shifted underneath us. It did shift once,
+    // when the filler gates and the standing bonus were added, and this caught it.
+    await expect(body).toContainText(/7 SwapVM instructions appended/i);
     await expect(body).toContainText(/index 33/);
 
     // The fee threshold is the votive's own principal, read from the votive.
@@ -178,7 +179,7 @@ test("the Aqua vault balance is shown on the wish itself, not only on /live", as
   await expect(page.getByRole("heading", { name: /1inch Aqua/i })).toBeVisible();
   // The custodied position — read from Aqua, and previously fetched and dropped
   // on the floor rather than rendered.
-  await expect(body).toContainText(/In the Aqua vault for this strategy/i);
+  await expect(body).toContainText(/Inventory committed to this strategy/i);
   await expect(body).toContainText(/safeBalances/);
   await expect(body).toContainText(/VDA/);
   await expect(body).toContainText(/VDB/);

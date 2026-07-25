@@ -78,6 +78,16 @@ export type PositionBlocker =
 
 export interface AquaPosition {
   configured: boolean;
+  /**
+   * Whether the chain actually answered.
+   *
+   * Every read here has a fallback, which is right — one missing symbol should
+   * not blank the panel. But when the *whole* set falls back, the zeros are not
+   * facts: they render as "0 instructions, 0 balance, already settled", which is
+   * a confident description of a position that is fine. A page whose only job is
+   * to be checkable must not do that, so a total failure is reported as one.
+   */
+  degraded: boolean;
   aqua: string;
   router: string;
   strategy: string;
@@ -260,6 +270,11 @@ export async function readAquaPosition(
   const s = Number(state);
   const live = s >= 1 && s <= 2;
 
+  // The opcode base is the tell. It is a constant on a deployed router and can
+  // never legitimately be zero, so a zero means the call did not land rather than
+  // that the router has no instructions.
+  const degraded = Number(base) === 0;
+
   // The order matters and mirrors the program: the lifecycle gate runs first,
   // then the capability, then the condition. Reporting them in a different order
   // would tell an operator to fix the wrong thing.
@@ -273,6 +288,7 @@ export async function readAquaPosition(
 
   return {
     configured: true,
+    degraded,
     aqua,
     router,
     strategy,

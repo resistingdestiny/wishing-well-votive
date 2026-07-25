@@ -218,9 +218,26 @@ export function chainConfig() {
   return { rpcUrl, chainId, factory, registry, positionRegistry, oracle, chain };
 }
 
+/**
+ * The read client, batching.
+ *
+ * `readCell` alone asks a votive about twenty questions. Sent one HTTP request at
+ * a time that is twenty round trips, and a public endpoint starts refusing part
+ * way through — which showed up as the Aqua panel on the same page reporting a
+ * position that did not exist, because its reads were the ones that got turned
+ * away.
+ *
+ * Batching folds them into a handful of requests and multicall folds the eligible
+ * ones into a single call. Both are transport-level, so nothing above has to be
+ * written as a batch to benefit from being one.
+ */
 export function publicClient() {
   const { chain, rpcUrl } = chainConfig();
-  return createPublicClient({ chain, transport: http(rpcUrl) });
+  return createPublicClient({
+    chain,
+    transport: http(rpcUrl, { batch: { wait: 12 } }),
+    batch: { multicall: { wait: 12 } },
+  });
 }
 
 export interface CellView {

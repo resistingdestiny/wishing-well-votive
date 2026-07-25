@@ -47,9 +47,17 @@ export function AquaPanel({ position }: { position: AquaPosition | null }) {
         the Aqua SDK encodes runs here byte-identically.
       </p>
 
-      <p className={position.fillable ? "note" : "note note-warn"}>
-        {explainBlocker(position.blocker)}
-      </p>
+      {position.degraded ? (
+        <p className="note note-warn">
+          Could not read the chain just now, so the numbers below are placeholders
+          rather than the position&rsquo;s actual state. Reload in a moment — a
+          public endpoint under load is the usual cause.
+        </p>
+      ) : (
+        <p className={position.fillable ? "note" : "note note-warn"}>
+          {explainBlocker(position.blocker)}
+        </p>
+      )}
 
       <table className="grid">
         <tbody>
@@ -63,7 +71,9 @@ export function AquaPanel({ position }: { position: AquaPosition | null }) {
           </tr>
           <tr>
             <td>Fee threshold (the votive&rsquo;s own principal)</td>
-            <td>{token(position.principal, "ETH")}</td>
+            {/* The wish's own funding token, not ether: an Aqua position is
+                ERC-20 only, so a votive that can quote itself is token-funded. */}
+            <td>{token(position.principal, position.symbolA)}</td>
           </tr>
           <tr>
             <td>Capability demonstrated by some model</td>
