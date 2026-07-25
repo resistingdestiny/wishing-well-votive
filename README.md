@@ -131,8 +131,8 @@ the moment it opens:
 
 Top-ups raise principal and are never performance-charged. Offerings — anything
 anyone else sends — are, at settlement, and only the amount above principal.
-Escheat charges no performance fee at all: the fee is for delivering a wish, and
-an escheat delivers nothing.
+Every route out — fulfil, redirect, escheat — pays the same two rates. There is no
+cheaper exit, and in particular no way to reach one by doing nothing.
 
 Repricing the factory affects only future votives. An existing votive holds its
 own terms and there is no code path that rewrites them. Founders pass the worst

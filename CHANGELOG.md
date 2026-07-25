@@ -9,6 +9,27 @@ versions.
 
 ## [Unreleased]
 
+### Fixed
+
+- **A share allocation naming `address(0)` burned its slice silently.** A transfer
+  to the zero address succeeds at the EVM level, so the value left the votive with
+  no revert, no deferral, and an event indistinguishable from an ordinary claim.
+  `claimShare` now refuses it, and the slice stays in the pot.
+- **A share allocation naming the votive itself stranded its slice for good.** The
+  push failed into `deferred[address(this)]`, which nothing can ever claim.
+  Reachable by griefing: open a cheap votive whose beneficiary is a live shared
+  votive and its address turns up in `liveShares`. Also refused now.
+- **`escheat` let a founder dodge the performance fee.** Naming yourself as
+  `fallbackTo` and taking the minimum ninety-day clock produced the same outcome as
+  a redirect for no performance fee at all — waiting was strictly cheaper than
+  asking. Escheat now pays the full schedule like every other exit, and the flag
+  that allowed a partial one has been removed rather than defaulted.
+- **`recoverToken` could be made to walk off with the principal.** It compared
+  addresses, so a funding token with a second entry point over the same balance
+  store passed the guard — turning a permissionless rescue function into a
+  fee-free withdrawal of the whole principal from a `Waiting` votive. It now
+  measures the funding balance across the transfer and refuses any movement in it.
+
 ### Added
 
 - Hardening: an invariant suite checking ten properties against randomised

@@ -129,3 +129,50 @@ contract DirtyReturnToken {
         return 2;
     }
 }
+
+/// @notice A token with two addresses over one balance store — the shape real
+///         tokens have had (TUSD, sUSD) when a proxy and its implementation are
+///         both live, or a token ships a second facade.
+///
+/// @dev The point for tests: `alias.balanceOf(x)` and `alias.transfer(...)` read
+///      and move the *same* balances as the core, while being a different address.
+///      Any guard that compares addresses will wave it through.
+contract SharedLedgerToken is ERC20 {
+    address public facade;
+
+    error NotFacade();
+
+    constructor() ERC20("Shared Ledger", "SHARE") {}
+
+    function mint(address to, uint256 amount) external {
+        _mint(to, amount);
+    }
+
+    function setFacade(address facade_) external {
+        facade = facade_;
+    }
+
+    /// @dev The second entry point moves core balances through here.
+    function moveForFacade(address from, address to, uint256 amount) external {
+        if (msg.sender != facade) revert NotFacade();
+        _transfer(from, to, amount);
+    }
+}
+
+/// @notice The second address over {SharedLedgerToken}'s balances.
+contract TokenFacade {
+    SharedLedgerToken public immutable core;
+
+    constructor(SharedLedgerToken core_) {
+        core = core_;
+    }
+
+    function balanceOf(address account) external view returns (uint256) {
+        return core.balanceOf(account);
+    }
+
+    function transfer(address to, uint256 amount) external returns (bool) {
+        core.moveForFacade(msg.sender, to, amount);
+        return true;
+    }
+}
