@@ -60,7 +60,10 @@ library AssuranceTiers {
         return tier <= ORB;
     }
 
-    /// @notice Whether `tier` clears the evidence bar for a draw of `amount`.
+    /// @notice Whether `tier` clears the evidence bar at a cumulative draw of
+    ///         `amount`.
+    /// @dev Callers are expected to pass the running total for the window, not one
+    ///      draw in isolation. A per-draw test is trivially defeated by asking twice.
     /// @param stepUpAmount The value above which the strongest tier is required.
     ///        Zero disables the step-up entirely, leaving only the tier weight.
     function meetsStepUp(uint8 tier, uint256 amount, uint256 stepUpAmount)
