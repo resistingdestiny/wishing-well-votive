@@ -87,11 +87,17 @@ weakens any of them is a bug, no matter how convenient.
                                                 / fallback / escheat
 ```
 
-**Lifecycle.** `Pending` (the creation transaction only) → `Waiting` → `Attempting`
-→ one of `Fulfilled`, `Redirected`, `Escheated`, or `Claimable` → `Closed`.
-`Waiting` and `Attempting` are the live states; everything past them is terminal
-except `Claimable`, which is the settled-but-undistributed state a multi-beneficiary
-votive passes through on its way to `Closed`.
+**Lifecycle.** `Nascent` (a deployed but unopened clone) → `Waiting` →
+`Attempting` → one of `Fulfilled`, `Redirected` or `Escheated`. `Waiting` and
+`Attempting` are the live states; everything past them is terminal, and there is
+no path back.
+
+**One contract per wish, cheaply.** Each votive is an EIP-1167 clone of a single
+immutable implementation, so opening one costs a proxy deployment rather than a
+redeployment of the protocol — and the factory's own bytecode does not grow as the
+protocol does. The implementation address is immutable in the factory on purpose:
+the fee ceilings and clock floors compiled into it should not be only as durable
+as an owner's key.
 
 **Capability gate.** A votive names a `capabilityId` — the identifier of a check
 that some model has to pass before anyone is allowed to attempt the wish. The
@@ -105,15 +111,30 @@ on purpose — they are the benchmark record.
 `conditionHash` — *has it been done*. Fulfilment requires an attestation that the
 condition is met for this specific votive.
 
-**Fee schedule.** Two rates, frozen per votive at creation:
+**Fee schedule.** Two rates, quoted by the factory and frozen into the votive at
+the moment it opens:
 
 | | default | ceiling | basis |
 |---|---|---|---|
-| streaming | 2 % / yr | 5 % / yr | parked principal, accrued continuously |
+| streaming | 2 % / yr | 5 % / yr | committed principal, accrued continuously, capped lifetime at principal |
 | performance | 8 % | 20 % | offerings above principal, taken once at settlement |
 
-Principal top-ups raise the principal and are never performance-charged.
-Unsolicited offerings are, at settlement, and only on the amount above principal.
+Top-ups raise principal and are never performance-charged. Offerings — anything
+anyone else sends — are, at settlement, and only the amount above principal.
+Escheat charges no performance fee at all: the fee is for delivering a wish, and
+an escheat delivers nothing.
+
+Repricing the factory affects only future votives. An existing votive holds its
+own terms and there is no code path that rewrites them. Founders pass the worst
+terms they will accept when they open, so a repricing landing in the same block
+cannot quietly become the deal they agreed to.
+
+**Remedies.** A votive that has outlived its point can be *redirected* by its
+founder at any time, or by a named guardian after a long silence. One that nobody
+ever comes back for *escheats*, permissionlessly, to the destination its founder
+named — or to the treasury as a backstop. A votive marked irrevocable forecloses
+redirection entirely, and may not name a guardian, since a guardian's only power
+would be one it could never use.
 
 ## Repository layout
 

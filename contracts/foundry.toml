@@ -30,6 +30,15 @@ runs = 1024
 runs = 256
 depth = 64
 
+[lint]
+# Every window this protocol reasons about is at minimum an hour long, and most
+# are measured in months or years (see VotiveLimits). A validator nudging
+# `block.timestamp` by a few seconds cannot change any decision the contracts
+# make, so the block-timestamp lint is noise here rather than signal — and
+# leaving it on would mean suppressing it at a dozen call sites, which trains
+# people to suppress it everywhere.
+exclude_lints = ["block-timestamp"]
+
 [fmt]
 line_length = 100
 tab_width = 4
