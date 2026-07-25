@@ -4,6 +4,11 @@ pragma solidity 0.8.28;
 /// @notice The slice of the attestation registry a votive reads: one question
 ///         before an attempt may start, one before it may settle.
 interface IAttestationRegistry {
+    /// @dev The key permitted to post attestations — and, because a mis-computed
+    ///      share allocation is the same kind of mistake as a mis-posted
+    ///      attestation, the one permitted to correct one inside its window.
+    function attestor() external view returns (address);
+
     /// @dev True while at least one model stands as having passed the check.
     function isCapabilityOpen(bytes32 capabilityId) external view returns (bool);
 

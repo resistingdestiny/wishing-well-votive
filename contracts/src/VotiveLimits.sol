@@ -29,4 +29,14 @@ library VotiveLimits {
     /// @notice An attempt must be allowed to run for at least an hour before a
     ///         bystander can reset it out from under the executor.
     uint64 internal constant MIN_ATTEMPT_WINDOW = 1 hours;
+
+    /// @notice How long a posted share allocation may be corrected before any of
+    ///         it can be claimed. Short, because it exists to catch an executor
+    ///         that computed the snapshot wrong, and the pot is already fixed —
+    ///         only who gets which slice of it is still in play.
+    uint64 internal constant SHARE_CHALLENGE_WINDOW = 1 hours;
+
+    /// @notice How long recipients have to come and collect their slice before
+    ///         whatever is left goes back to the founder who put it up.
+    uint64 internal constant SHARE_CLAIM_WINDOW = 90 days;
 }
