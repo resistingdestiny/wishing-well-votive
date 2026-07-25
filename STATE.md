@@ -5,7 +5,7 @@ accurate: someone who has never seen the project should be able to read this
 file and know exactly what exists, what is next, and what is blocked.
 
 **Last updated:** 2026-07-25
-**Current milestone:** M1 — protocol core (Solidity only) — **complete**, 208 tests green
+**Current milestone:** M1 — protocol core (Solidity only) — **complete**, 218 tests green
 
 ---
 
@@ -13,7 +13,7 @@ file and know exactly what exists, what is next, and what is blocked.
 
 | # | Milestone | Status |
 |---|-----------|--------|
-| M1 | Protocol core — segregated votives, fee engine, lifecycle, oracle | in progress |
+| M1 | Protocol core — segregated votives, fee engine, lifecycle, oracle | complete |
 | M2 | Sponsor integrations — each behind its own PR | not started |
 | M3 | Off-chain runtime + surfaces | not started |
 
@@ -89,6 +89,18 @@ Nothing is blocked.
   attestation is a pass*, rather than storing one global boolean. Without this, a
   newly-released weak model failing an eval would slam shut a gate that a strong
   model had already opened.
+- **Every route out pays the same two rates.** Escheat used to skip the
+  performance fee on the reasoning that it delivers nothing. That was wrong:
+  escheat has a founder-chosen destination, so naming yourself as `fallbackTo` and
+  going quiet for the minimum window bought a redirect at a discount. There is now
+  no partial schedule and no way to ask for one.
+- **"Is this the funding asset" is a balance question, not an address question.**
+  A token can have several addresses over one balance store, so `recoverToken`
+  measures the funding balance across the transfer instead of comparing addresses.
+  Any guard of this shape elsewhere should do the same.
+- **A payout destination of `address(0)` is not a no-op.** Sending value there
+  succeeds and burns it. Anywhere a recipient comes from data rather than from the
+  signed intent, it has to be checked — see `claimShare`.
 - **Payouts push, then fall back to a pull ledger.** A settlement never reverts
   because one recipient refuses value; the amount is credited to `deferred` and
   that recipient pulls it later at full gas. Terminal transitions must not be
