@@ -192,6 +192,7 @@ abstract contract VotiveBase is Initializable, ReentrancyGuard, EIP712 {
     error ClaimWindowClosed();
     error AlreadyClaimed();
     error BadProof();
+    error BadRecipient();
 
     // -------------------------------------------------------------- modifiers
 
@@ -594,6 +595,16 @@ abstract contract VotiveBase is Initializable, ReentrancyGuard, EIP712 {
         if (block.timestamp <= shareChallengeEndsAt) revert ChallengeWindowOpen();
         if (block.timestamp > shareClaimEndsAt) revert ClaimWindowClosed();
         if (_shareClaimed.get(index)) revert AlreadyClaimed();
+        // Two recipients an allocation must never be paid out to, because paying
+        // them is worse than not paying at all. A transfer to the zero address
+        // succeeds at the EVM level, so it would drain the slice into nothing with
+        // no revert, no deferral and no event saying anything had gone wrong. A
+        // transfer to the votive itself fails, lands in `deferred[address(this)]`,
+        // and can never be claimed — the votive cannot call `claimDeferred` on its
+        // own behalf. Refusing leaves the slice in the pot, where a corrected
+        // allocation can still reach it and the claim window's end returns it to
+        // the founder.
+        if (account == address(0) || account == address(this)) revert BadRecipient();
 
         bytes32 leaf = keccak256(bytes.concat(keccak256(abi.encode(index, account, weight))));
         if (!MerkleProof.verify(proof, shareRoot, leaf)) revert BadProof();
