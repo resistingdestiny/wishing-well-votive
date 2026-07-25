@@ -288,3 +288,17 @@ test.describe("the commons", () => {
     await expect(panel).toContainText(/Connect a wallet/i);
   });
 });
+
+test("the faucet is one click from anywhere", async ({ page }) => {
+  // It sits beside "Make a wish" because it is the prerequisite for it. If it
+  // were only a section tab, a visitor landing on a wish would have to know to
+  // go looking under Build first.
+  for (const path of ["/", "/explore", "/live"]) {
+    await page.goto(path);
+    const link = page.getByRole("link", { name: "Get VOTIVE" }).first();
+    await expect(link, `no faucet link on ${path}`).toBeVisible();
+  }
+  await page.getByRole("link", { name: "Get VOTIVE" }).first().click();
+  await expect(page).toHaveURL(/\/faucet$/);
+  await expect(page.getByTestId("faucet-panel")).toBeVisible({ timeout: 20_000 });
+});
