@@ -34,10 +34,42 @@ test('an agent without a bounty client does not offer bounty tools', () => {
   const agent = createVotiveAgent({rail});
   const names = agent.tools().map((t) => t.name);
 
-  assert.deepEqual(names, ['hedera_pay', 'hedera_x402_buy']);
+  assert.deepEqual(names, ['hedera_pay', 'hedera_x402_buy', 'votive_screen_wish']);
 });
 
-test('an agent with a bounty client offers all four', () => {
+/// Screening needs nothing but the wish text, and it is the one tool that must
+/// never be missing from an agent that might be handed a harmful wish. So it is
+/// offered whatever else the agent was configured with.
+test('wish screening is always offered, however little else is configured', () => {
+  const {rail} = fakeRail();
+  const bare = createVotiveAgent({rail});
+
+  assert.ok(bare.tools().some((t) => t.name === 'votive_screen_wish'));
+});
+
+test('the standing tool appears only when the agent can actually answer it', () => {
+  const {rail} = fakeRail();
+  const standing = {
+    async snapshot() {
+      return {humanId: `0x${'aa'.repeat(32)}` as const, assurance: 2, barred: false, multiplierBps: 10_000n};
+    },
+    async isBarred() { return false; },
+    async multiplierBps() { return 10_000n; },
+  };
+
+  assert.ok(!createVotiveAgent({rail}).tools().some((t) => t.name === 'votive_my_standing'));
+  assert.ok(
+    !createVotiveAgent({rail, standing}).tools().some((t) => t.name === 'votive_my_standing'),
+    'offered without knowing which wallet to ask about'
+  );
+  assert.ok(
+    createVotiveAgent({rail, standing, wallet: '0xabc'})
+      .tools()
+      .some((t) => t.name === 'votive_my_standing')
+  );
+});
+
+test('an agent with a bounty client offers the paid-work tools too', () => {
   const {rail} = fakeRail();
   const agent = createVotiveAgent({
     rail,
@@ -48,7 +80,7 @@ test('an agent with a bounty client offers all four', () => {
     },
   });
 
-  assert.equal(agent.tools().length, 4);
+  assert.equal(agent.tools().length, 5);
   for (const tool of agent.tools()) {
     assert.ok(tool.description.length > 40, `${tool.name} needs a description a model can act on`);
     assert.equal(tool.input_schema.type, 'object');
@@ -107,4 +139,108 @@ test('an unrecognised instruction moves nothing', async () => {
   const outcome = await agent.run('transfer:0.0.1:5:x');
   assert.equal(outcome.ok, false);
   assert.equal(transfers.length, 0);
+});
+
+// ------------------------------------------------------------ world tools
+
+/// A refusal comes back as ok:false so a model that treats a failed tool call as
+/// "stop and reconsider" does the right thing without parsing the payload.
+test('screening a harmful wish refuses it, loudly enough for a model to notice', async () => {
+  const {rail} = fakeRail();
+  const agent = createVotiveAgent({rail});
+
+  const result = await agent.call('votive_screen_wish', {
+    text: 'Have this person killed and I will pay well',
+  });
+
+  assert.equal(result.ok, false);
+  assert.match(result.summary, /refuse this wish/i);
+  assert.match(result.summary, /do not claim it/i);
+});
+
+test('screening an ordinary wish clears it', async () => {
+  const {rail} = fakeRail();
+  const agent = createVotiveAgent({rail});
+
+  const result = await agent.call('votive_screen_wish', {
+    text: 'Translate this 14th-century manuscript into modern English',
+  });
+
+  assert.equal(result.ok, true);
+});
+
+test('an agent whose operator is barred is told to stop', async () => {
+  const {rail} = fakeRail();
+  const agent = createVotiveAgent({
+    rail,
+    wallet: '0xabc',
+    standing: {
+      async snapshot() {
+        return {
+          humanId: `0x${'aa'.repeat(32)}` as const,
+          assurance: 3,
+          barred: true,
+          multiplierBps: 0n,
+        };
+      },
+      async isBarred() { return true; },
+      async multiplierBps() { return 0n; },
+    },
+  });
+
+  const result = await agent.call('votive_my_standing', {});
+
+  assert.equal(result.ok, false);
+  assert.match(result.summary, /barred/);
+  assert.match(result.summary, /do not take on work/i);
+});
+
+test('an unverified agent is told to get verified, not that it is barred', async () => {
+  const {rail} = fakeRail();
+  const agent = createVotiveAgent({
+    rail,
+    wallet: '0xabc',
+    standing: {
+      async snapshot() {
+        return {humanId: null, assurance: 0, barred: false, multiplierBps: 0n};
+      },
+      async isBarred() { return false; },
+      async multiplierBps() { return 0n; },
+    },
+  });
+
+  const result = await agent.call('votive_my_standing', {});
+
+  assert.equal(result.ok, false);
+  assert.match(result.summary, /no verified human/i);
+  assert.doesNotMatch(result.summary, /barred/, 'unverified was reported as barred');
+});
+
+test('a verified agent is told what it may spend', async () => {
+  const {rail} = fakeRail();
+  const agent = createVotiveAgent({
+    rail,
+    wallet: '0xabc',
+    standing: {
+      async snapshot() {
+        return {
+          humanId: `0x${'aa'.repeat(32)}` as const,
+          assurance: 2,
+          barred: false,
+          multiplierBps: 12_000n,
+          ceiling: 1_000n,
+          remaining: 400n,
+        };
+      },
+      async isBarred() { return false; },
+      async multiplierBps() { return 12_000n; },
+    },
+  });
+
+  const result = await agent.call('votive_my_standing', {});
+
+  assert.equal(result.ok, true);
+  assert.match(result.summary, /tier 2/);
+  assert.match(result.summary, /120%/);
+  assert.match(result.summary, /400 left to spend/);
 });
