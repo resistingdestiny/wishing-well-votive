@@ -13,6 +13,7 @@ import {
 import { useRouter } from "next/navigation";
 import { getAddress, isAddress, formatEther, parseEther, parseUnits, parseSignature } from "viem";
 import { cellAbi, tokenVotiveAbi, erc20Abi } from "@/lib/chain";
+import { noteTx, type TxKind } from "@/lib/noteTx";
 import { appChain } from "@/lib/wagmi";
 import { shortAddr } from "@/lib/format";
 
@@ -228,6 +229,19 @@ export function OwnerActions({ address }: { address: `0x${string}` }) {
       });
       setTxHash(hash);
       await client.waitForTransactionReceipt({ hash });
+      // Named per action so the feed reads as a sentence rather than "a call was
+      // made". Unknown actions are simply not recorded, which is better than
+      // recording them under a label that means nothing.
+      const KIND: Record<string, TxKind> = {
+        heartbeat: "wish-heartbeat",
+        redirect: "wish-redirected",
+        escheat: "wish-escheated",
+        claimShare: "share-claimed",
+        claimDeferred: "deferred-claimed",
+        topUp: "wish-topped-up",
+      };
+      const kind = KIND[functionName];
+      if (kind) noteTx(kind, hash, { subject: cell, contract: cell });
       setDone(id);
       refetchAll();
 

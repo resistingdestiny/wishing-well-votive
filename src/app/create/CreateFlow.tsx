@@ -28,6 +28,7 @@ import { FiatFundForm } from "../fund/FiatFundForm";
 import { WatchButton } from "@/app/WatchButton";
 import { Field } from "@/app/ui/Field";
 import { addMyCell } from "@/lib/myCells";
+import { noteTx } from "@/lib/noteTx";
 
 const RAIL_STEPS = ["Your wish", "Review & terms", "Fund it", "Done"] as const;
 
@@ -370,6 +371,11 @@ export function CreateFlow() {
         ? `0x${created.topics[1].slice(26)}`
         : "";
       if (cell) {
+        noteTx("wish-opened", hash, {
+          detail: `${amount} ${fundToken ? fundToken.symbol : "ETH"} from ${depositor}`,
+          contract: factoryAddress,
+          subject: cell,
+        });
         await fetch("/api/register-wish", {
           method: "POST",
           headers: { "content-type": "application/json" },
