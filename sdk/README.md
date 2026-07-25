@@ -17,7 +17,45 @@ npm install @votive/agent-skills @hashgraph/sdk
 `@hashgraph/sdk` is an optional peer dependency. An agent running against a fake
 rail — in tests, or before it has credentials — does not need it installed at all.
 
-## Use
+## Building an agent
+
+The short path: make a rail, make an agent, hand its tools to a model.
+
+```ts
+import {createHederaRail, createVotiveAgent} from '@votive/agent-skills';
+
+const rail = await createHederaRail({
+  accountId: process.env.HEDERA_ACCOUNT_ID!,
+  privateKey: process.env.HEDERA_PRIVATE_KEY!,
+  network: 'testnet',
+});
+
+const agent = createVotiveAgent({rail, bounty: myBountyClient});
+
+// Hand these straight to any tool-calling API — plain JSON Schema, no adapter.
+const tools = agent.tools();
+
+// When the model picks one, perform it.
+const result = await agent.call('hedera_x402_buy', {
+  instruction: 'buy:https://api.example.com/render:0.5:render the brief',
+});
+console.log(result.summary);
+```
+
+### What the agent can do out of the box
+
+| tool | what it does |
+|---|---|
+| `hedera_pay` | send HBAR to settle something the wish authorised |
+| `hedera_x402_buy` | buy one use of a paid API with no account and no key |
+| `votive_claim_bounty` | take exclusive responsibility for a task before starting |
+| `votive_withdraw_earnings` | collect everything earned, in one call |
+
+The bounty tools only appear when the agent was given a chain client — offering a
+model a tool guaranteed to fail is worse than not offering it. A tool name the model
+misremembers is refused rather than approximated.
+
+## Using the skills directly
 
 ```ts
 import {createHederaRail, payHbar, x402Buy} from '@votive/agent-skills';
