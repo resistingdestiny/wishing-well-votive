@@ -487,7 +487,7 @@ abstract contract VotiveBase is Initializable, ReentrancyGuard, EIP712 {
             revert ConditionNotMet();
         }
 
-        (address treasury, uint256 platformDue, uint256 residue) = _computeSettlement(true);
+        (address treasury, uint256 platformDue, uint256 residue) = _computeSettlement();
         address executor = msg.sender;
 
         state = VotiveState.Fulfilled;
@@ -557,7 +557,7 @@ abstract contract VotiveBase is Initializable, ReentrancyGuard, EIP712 {
             revert ConditionNotMet();
         }
 
-        (address treasury, uint256 platformDue, uint256 residue) = _computeSettlement(true);
+        (address treasury, uint256 platformDue, uint256 residue) = _computeSettlement();
 
         state = VotiveState.Fulfilled;
         factory.onTerminal();
@@ -716,7 +716,7 @@ abstract contract VotiveBase is Initializable, ReentrancyGuard, EIP712 {
         if (to == address(0) || to == address(this)) revert ZeroPayout();
 
         lastFounderSignal = uint64(block.timestamp);
-        (address treasury, uint256 platformDue, uint256 residue) = _computeSettlement(true);
+        (address treasury, uint256 platformDue, uint256 residue) = _computeSettlement();
 
         state = VotiveState.Redirected;
         factory.onTerminal();
@@ -737,14 +737,25 @@ abstract contract VotiveBase is Initializable, ReentrancyGuard, EIP712 {
     ///         front-runnable by an escheat, and a stalled one falls back to
     ///         `Waiting` on its own once the attempt window elapses.
     ///
-    ///         No performance fee is charged here. The fee is for delivering a
-    ///         wish, and an escheat delivers nothing; the treasury still collects
-    ///         the streaming fee it has already earned.
+    /// @dev The full schedule applies here, performance fee included. An earlier
+    ///      version of this contract charged only the streaming fee, on the
+    ///      reasoning that the performance fee is for delivering a wish and an
+    ///      escheat delivers nothing. That was wrong, and it opened a hole: a
+    ///      founder who names *themselves* as `fallbackTo` and takes the minimum
+    ///      escheat clock gets the same outcome as a redirect — their money, where
+    ///      they want it — for no performance fee at all, just by staying quiet for
+    ///      ninety days. Waiting became strictly cheaper than asking.
+    ///
+    ///      Charging always is also simpler than charging conditionally, and costs
+    ///      nothing in the case the exemption was meant for: with no named
+    ///      fallback the whole remainder goes to the treasury regardless, so
+    ///      whether part of it was labelled a performance fee makes no difference
+    ///      to anybody.
     function escheat() external nonReentrant {
         if (state != VotiveState.Waiting) revert WrongState();
         if (block.timestamp < escheatOpensAt()) revert SilenceTooShort();
 
-        (address treasury, uint256 platformDue, uint256 residue) = _computeSettlement(false);
+        (address treasury, uint256 platformDue, uint256 residue) = _computeSettlement();
 
         state = VotiveState.Escheated;
         factory.onTerminal();
@@ -798,8 +809,13 @@ abstract contract VotiveBase is Initializable, ReentrancyGuard, EIP712 {
     ///      Nothing is transferred here. Callers move to a terminal state first
     ///      and pay afterwards, so a recipient that calls back in finds a votive
     ///      that has already finished deciding.
-    /// @param chargePerformance False on escheat, where nothing was delivered.
-    function _computeSettlement(bool chargePerformance)
+    ///
+    ///      There is deliberately no way to ask for a partial schedule. This used
+    ///      to take a flag that let escheat skip the performance fee, and that
+    ///      flag was a hole — see {escheat}. Every route out of a votive now pays
+    ///      the same two rates, which is both the honest rule and one fewer branch
+    ///      anybody can get wrong later.
+    function _computeSettlement()
         private
         returns (address treasury, uint256 platformDue, uint256 residue)
     {
@@ -808,7 +824,7 @@ abstract contract VotiveBase is Initializable, ReentrancyGuard, EIP712 {
 
         uint256 stream = unpaidStream();
         uint256 gain = offerings();
-        uint256 performance = chargePerformance ? (gain * terms.performanceBps) / BPS : 0;
+        uint256 performance = (gain * terms.performanceBps) / BPS;
 
         streamPaid += stream;
         performanceCharged = performance;
