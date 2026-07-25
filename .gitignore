@@ -83,3 +83,7 @@ aqua/out/
 aqua/cache/
 aqua/broadcast/
 aqua/node_modules/
+
+# ------------------------------------------------------------- sdk workspace
+sdk/dist/
+sdk/node_modules/
