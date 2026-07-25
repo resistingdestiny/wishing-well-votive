@@ -35,8 +35,8 @@ failing test.
 - [x] **3. Core votive** — `VotiveTypes` + `VotiveLimits`, `VotiveBase`
       (lifecycle, fee engine, settlement, redirect, escheat, deferred ledger),
       `NativeVotive`, `VotiveFactory`. 152 tests.
-- [ ] **4. Token votive** — `TokenVotive`, ERC-20 creation path, funding-token
-      allowlist.
+- [x] **4. Token votive** — `TokenVotive`, ERC-20 creation path, funding-token
+      allowlist. 175 tests.
 - [ ] **5. Multi-party settlement** — pro-rata distribution to the active set and
       the multi-beneficiary claim lifecycle.
 - [ ] **6. Hardening** — invariant suite, deployment script, gas snapshot.

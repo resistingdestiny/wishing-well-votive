@@ -11,6 +11,12 @@ versions.
 
 ### Added
 
+- `TokenVotive` — a votive funded in a single ERC-20, plus `openWithToken` and an
+  owner-curated funding-token allowlist on the factory. The funding token is
+  captured at creation and never re-read, so de-listing blocks new votives
+  without disturbing existing ones. Principal is the measured balance, and the
+  optimistic push tolerates tokens that return nothing, return a dirty word, or
+  refuse a blocklisted recipient — none of which can wedge a settlement.
 - `VotiveBase` — the protocol core: the `Nascent → Waiting → Attempting →
   {Fulfilled | Redirected | Escheated}` state machine, the two-rate fee engine,
   settlement, the redirect and escheat remedies, EIP-712 signed redirects with
