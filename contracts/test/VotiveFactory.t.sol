@@ -15,18 +15,24 @@ contract VotiveFactoryTest is VotiveTest {
     // ------------------------------------------------------------ construction
 
     function test_constructor_rejectsZeroWiring() public {
-        vm.expectRevert(VotiveFactory.ZeroAddress.selector);
-        new VotiveFactory(owner, registry, address(0), treasury, executor, gate);
+        address native = address(implementation);
+        address tokenImpl = address(tokenImplementation);
 
         vm.expectRevert(VotiveFactory.ZeroAddress.selector);
-        new VotiveFactory(owner, registry, address(implementation), address(0), executor, gate);
+        new VotiveFactory(owner, registry, address(0), tokenImpl, treasury, executor, gate);
 
         vm.expectRevert(VotiveFactory.ZeroAddress.selector);
-        new VotiveFactory(owner, registry, address(implementation), treasury, address(0), gate);
+        new VotiveFactory(owner, registry, native, address(0), treasury, executor, gate);
+
+        vm.expectRevert(VotiveFactory.ZeroAddress.selector);
+        new VotiveFactory(owner, registry, native, tokenImpl, address(0), executor, gate);
+
+        vm.expectRevert(VotiveFactory.ZeroAddress.selector);
+        new VotiveFactory(owner, registry, native, tokenImpl, treasury, address(0), gate);
 
         vm.expectRevert(VotiveFactory.ZeroAddress.selector);
         new VotiveFactory(
-            owner, registry, address(implementation), treasury, executor, OpenAccessGate(address(0))
+            owner, registry, native, tokenImpl, treasury, executor, OpenAccessGate(address(0))
         );
     }
 
