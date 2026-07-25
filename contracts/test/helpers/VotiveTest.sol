@@ -3,6 +3,8 @@ pragma solidity 0.8.28;
 
 import {AttestationRegistry} from "../../src/AttestationRegistry.sol";
 import {NativeVotive} from "../../src/NativeVotive.sol";
+import {TokenVotive} from "../../src/TokenVotive.sol";
+import {VotiveBase} from "../../src/VotiveBase.sol";
 import {VotiveFactory} from "../../src/VotiveFactory.sol";
 import {Deadlines, Intent, Terms, VotiveKind, VotiveState} from "../../src/VotiveTypes.sol";
 import {OpenAccessGate} from "../../src/gates/OpenAccessGate.sol";
@@ -15,6 +17,7 @@ abstract contract VotiveTest is Test {
     AttestationRegistry internal registry;
     OpenAccessGate internal gate;
     NativeVotive internal implementation;
+    TokenVotive internal tokenImplementation;
     VotiveFactory internal factory;
 
     address internal owner = makeAddr("owner");
@@ -49,8 +52,16 @@ abstract contract VotiveTest is Test {
         registry = new AttestationRegistry(owner, attestor);
         gate = new OpenAccessGate();
         implementation = new NativeVotive();
-        factory =
-            new VotiveFactory(owner, registry, address(implementation), treasury, executor, gate);
+        tokenImplementation = new TokenVotive();
+        factory = new VotiveFactory(
+            owner,
+            registry,
+            address(implementation),
+            address(tokenImplementation),
+            treasury,
+            executor,
+            gate
+        );
 
         vm.prank(owner);
         registry.setFactory(address(factory));
@@ -168,7 +179,9 @@ abstract contract VotiveTest is Test {
 
     // ------------------------------------------------------------- assertions
 
-    function assertState(NativeVotive votive, VotiveState expected) internal view {
+    /// @dev Typed against the base so it reads the same for either votive — they
+    ///      share one state machine, and the tests should be able to say so.
+    function assertState(VotiveBase votive, VotiveState expected) internal view {
         assertEq(uint8(votive.state()), uint8(expected), "unexpected lifecycle state");
     }
 }

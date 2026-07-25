@@ -2,6 +2,7 @@
 pragma solidity 0.8.28;
 
 import {NativeVotive} from "./NativeVotive.sol";
+import {TokenVotive} from "./TokenVotive.sol";
 import {VotiveBase} from "./VotiveBase.sol";
 import {VotiveLimits} from "./VotiveLimits.sol";
 import {Deadlines, Intent, Terms, VotiveState} from "./VotiveTypes.sol";
@@ -10,6 +11,8 @@ import {IAttestationRegistry} from "./interfaces/IAttestationRegistry.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {Ownable2Step} from "@openzeppelin/contracts/access/Ownable2Step.sol";
 import {Clones} from "@openzeppelin/contracts/proxy/Clones.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 /// @title VotiveFactory
 /// @notice Opens votives, keeps the list of which ones are still live, and holds
@@ -31,13 +34,18 @@ import {Clones} from "@openzeppelin/contracts/proxy/Clones.sol";
 ///        key; making it immutable means a new implementation requires a new
 ///        factory, in public, and leaves every existing votive untouched.
 contract VotiveFactory is Ownable2Step {
+    using SafeERC20 for IERC20;
+
     // ---------------------------------------------------------------- storage
 
     /// @notice The attestation registry every votive opened here will read.
     IAttestationRegistry public immutable registry;
 
-    /// @notice The implementation votives are cloned from.
+    /// @notice The implementation native-asset votives are cloned from.
     address public immutable nativeImplementation;
+
+    /// @notice The implementation token-funded votives are cloned from.
+    address public immutable tokenImplementation;
 
     /// @notice Where protocol fees are sent.
     address public treasury;
@@ -62,6 +70,12 @@ contract VotiveFactory is Ownable2Step {
     /// @notice Whether an address is a votive this factory opened.
     mapping(address account => bool) public isVotive;
 
+    /// @notice ERC-20s a votive may currently be funded in.
+    /// @dev Checked only at creation. A votive captures its funding token
+    ///      immutably and never re-reads this map, so de-listing a token blocks
+    ///      new votives and cannot strand a single existing one.
+    mapping(address token => bool) public allowedToken;
+
     // ----------------------------------------------------------------- events
 
     event VotiveOpened(
@@ -77,6 +91,7 @@ contract VotiveFactory is Ownable2Step {
     event AccessGateChanged(address indexed previous, address indexed current);
     event DefaultTermsChanged(Terms terms);
     event DefaultDeadlinesChanged(Deadlines deadlines);
+    event TokenAllowed(address indexed token, bool allowed);
 
     // ----------------------------------------------------------------- errors
 
@@ -86,6 +101,7 @@ contract VotiveFactory is Ownable2Step {
     error NotFounder();
     error NotAVotive();
     error TermsRejected();
+    error TokenNotAllowed();
     error BadTerms();
     error BadDeadlines();
 
@@ -95,18 +111,20 @@ contract VotiveFactory is Ownable2Step {
         address initialOwner,
         IAttestationRegistry registry_,
         address nativeImplementation_,
+        address tokenImplementation_,
         address treasury_,
         address executor_,
         IAccessGate accessGate_
     ) Ownable(initialOwner) {
         if (
             address(registry_) == address(0) || nativeImplementation_ == address(0)
-                || treasury_ == address(0) || executor_ == address(0)
-                || address(accessGate_) == address(0)
+                || tokenImplementation_ == address(0) || treasury_ == address(0)
+                || executor_ == address(0) || address(accessGate_) == address(0)
         ) revert ZeroAddress();
 
         registry = registry_;
         nativeImplementation = nativeImplementation_;
+        tokenImplementation = tokenImplementation_;
         treasury = treasury_;
         executor = executor_;
         accessGate = accessGate_;
@@ -144,16 +162,9 @@ contract VotiveFactory is Ownable2Step {
         Deadlines calldata deadlineOverrides,
         Terms calldata maxTerms
     ) external payable returns (address votive) {
-        if (!accessGate.isPermitted(msg.sender)) revert NotPermitted();
-        if (msg.sender != intent_.founder) revert NotFounder();
         if (msg.value == 0) revert ZeroFunding();
-
-        Terms memory quoted = defaultTerms;
-        if (
-            quoted.streamBps > maxTerms.streamBps || quoted.performanceBps > maxTerms.performanceBps
-        ) revert TermsRejected();
-
-        Deadlines memory clocks = _withDefaults(deadlineOverrides);
+        (Terms memory quoted, Deadlines memory clocks) =
+            _admit(intent_, deadlineOverrides, maxTerms);
 
         votive = Clones.clone(nativeImplementation);
         _record(votive, intent_.capabilityId);
@@ -162,6 +173,61 @@ contract VotiveFactory is Ownable2Step {
         );
 
         emit VotiveOpened(votive, msg.sender, intent_.capabilityId, address(0), msg.value);
+    }
+
+    /// @notice Open and fund a votive in an allowlisted ERC-20. The founder must
+    ///         approve this factory for `amount` first.
+    ///
+    /// @dev The tokens go straight from the founder into the freshly cloned
+    ///      votive — the factory is never, at any point in the transaction, the
+    ///      holder of anybody's funds. The votive then adopts whatever actually
+    ///      landed as its principal, so a token that skims on transfer credits
+    ///      what arrived rather than what was asked for.
+    /// @param token The funding token, which must currently be allowlisted. The
+    ///        votive captures it immutably, so de-listing later blocks new
+    ///        votives without disturbing existing ones.
+    /// @param amount How much to move in.
+    function openWithToken(
+        Intent calldata intent_,
+        Deadlines calldata deadlineOverrides,
+        Terms calldata maxTerms,
+        IERC20 token,
+        uint256 amount
+    ) external returns (address votive) {
+        if (!allowedToken[address(token)]) revert TokenNotAllowed();
+        if (amount == 0) revert ZeroFunding();
+        (Terms memory quoted, Deadlines memory clocks) =
+            _admit(intent_, deadlineOverrides, maxTerms);
+
+        votive = Clones.clone(tokenImplementation);
+        _record(votive, intent_.capabilityId);
+        token.safeTransferFrom(msg.sender, votive, amount);
+        TokenVotive(votive).initialize(intent_, clocks, quoted, address(registry), token);
+
+        emit VotiveOpened(
+            votive,
+            msg.sender,
+            intent_.capabilityId,
+            address(token),
+            TokenVotive(votive).principal()
+        );
+    }
+
+    /// @dev The checks and quotes shared by every way of opening a votive.
+    function _admit(
+        Intent calldata intent_,
+        Deadlines calldata deadlineOverrides,
+        Terms calldata maxTerms
+    ) private view returns (Terms memory quoted, Deadlines memory clocks) {
+        if (!accessGate.isPermitted(msg.sender)) revert NotPermitted();
+        if (msg.sender != intent_.founder) revert NotFounder();
+
+        quoted = defaultTerms;
+        if (
+            quoted.streamBps > maxTerms.streamBps || quoted.performanceBps > maxTerms.performanceBps
+        ) revert TermsRejected();
+
+        clocks = _withDefaults(deadlineOverrides);
     }
 
     /// @dev Fill any zeroed clock from the platform defaults. Validation of the
@@ -260,6 +326,17 @@ contract VotiveFactory is Ownable2Step {
         if (newExecutor == address(0)) revert ZeroAddress();
         emit ExecutorChanged(executor, newExecutor);
         executor = newExecutor;
+    }
+
+    /// @notice Add or remove an ERC-20 from the set a votive may be funded in.
+    /// @dev De-listing only closes the door to new votives. Existing ones hold
+    ///      their token immutably and are untouched, which is the point: an
+    ///      admin decision about what to accept tomorrow must never become a
+    ///      decision about somebody's money today.
+    function setTokenAllowed(address token, bool allowed) external onlyOwner {
+        if (token == address(0)) revert ZeroAddress();
+        allowedToken[token] = allowed;
+        emit TokenAllowed(token, allowed);
     }
 
     function setAccessGate(IAccessGate newGate) external onlyOwner {
