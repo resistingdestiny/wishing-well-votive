@@ -29,3 +29,122 @@ pnpm dev                  # http://127.0.0.1:3100
 ```bash
 pnpm build && pnpm start
 ```
+
+---
+
+## The on-chain protocol
+
+Lives in [`contracts/`](contracts/).
+
+**Fund a wish today, release it the day it becomes possible.**
+
+A votive is an offering made in fulfilment of a vow. Here it is a contract: you
+park value, you write down what has to become true, and the money sits in its own
+segregated vessel until an oracle attests that the world (or a model) can finally
+deliver it. If that day never comes, the vow still has an ending — you can redirect
+it, a guardian can redirect it on your behalf after long silence, or it escheats to
+a destination you named up front.
+
+This repository is the protocol. Milestone 1 is the Solidity core; integrations
+land afterwards, each behind its own pull request.
+
+---
+
+## The three invariants
+
+Everything in `contracts/src` exists to hold these three lines. A change that
+weakens any of them is a bug, no matter how convenient.
+
+1. **Segregation.** One `Votive` contract per wish. Value is never pooled, never
+   rehypothecated, never lent between wishes. A votive can only ever pay out
+   what it itself holds.
+2. **Fee transparency.** Every votive freezes its own fee terms at creation and
+   can never charge more than them. Terms are two numbers — a streaming rate on
+   parked principal and a performance rate on gains above principal — both bounded
+   by constants in the bytecode. There is no privileged path that moves value out
+   of a votive outside the published schedule.
+3. **Intent control.** Execution runs off the signed `Intent` struct, never off
+   the prose that produced it. Redirecting a votive requires the founder's
+   authority (directly or by signature), or a named guardian after a long
+   inactivity window. Escheat requires a longer one. A sealed votive forecloses
+   redirection entirely.
+
+## How it works
+
+```
+                        ┌─────────────────────────────────────────┐
+   founder ──create──▶  │  Votive  (one contract, one wish)       │
+                        │                                         │
+   anyone  ──offer───▶  │  principal   ── streaming fee ──▶ treasury
+                        │  offerings   ── performance fee ─▶ treasury
+                        │                                         │
+   executor ─attempt─▶  │  Pending → Waiting → Attempting → ...   │
+                        └─────────────────────────────────────────┘
+                                    ▲                  │
+                          capability│gate         payout│per Intent
+                                    │                  ▼
+                      AttestationRegistry       beneficiary / guardian
+                                                / fallback / escheat
+```
+
+**Lifecycle.** `Pending` (the creation transaction only) → `Waiting` → `Attempting`
+→ one of `Fulfilled`, `Redirected`, `Escheated`, or `Claimable` → `Closed`.
+`Waiting` and `Attempting` are the live states; everything past them is terminal
+except `Claimable`, which is the settled-but-undistributed state a multi-beneficiary
+votive passes through on its way to `Closed`.
+
+**Capability gate.** A votive names a `capabilityId` — the identifier of a check
+that some model has to pass before anyone is allowed to attempt the wish. The
+`AttestationRegistry` records pass/fail per (capability, model) and counts the
+models currently passing. The gate opens on the first pass and stays open while
+any model still holds it: a later, weaker model failing the same check can never
+close a capability another model has already demonstrated. Failures are recorded
+on purpose — they are the benchmark record.
+
+**Release condition.** Separately from *can it be done*, a votive names a
+`conditionHash` — *has it been done*. Fulfilment requires an attestation that the
+condition is met for this specific votive.
+
+**Fee schedule.** Two rates, frozen per votive at creation:
+
+| | default | ceiling | basis |
+|---|---|---|---|
+| streaming | 2 % / yr | 5 % / yr | parked principal, accrued continuously |
+| performance | 8 % | 20 % | offerings above principal, taken once at settlement |
+
+Principal top-ups raise the principal and are never performance-charged.
+Unsolicited offerings are, at settlement, and only on the amount above principal.
+
+## Repository layout
+
+```
+contracts/          Foundry project — the protocol
+  src/              Solidity sources
+  test/             unit, fuzz and invariant tests
+  script/           deployment scripts (no addresses committed)
+STATE.md            current status, cold-start accurate
+CHANGELOG.md        what shipped, per release
+```
+
+## Working on it
+
+```bash
+cd contracts
+forge build            # compile
+forge test             # unit + fuzz + invariant
+forge fmt --check      # formatting
+forge coverage         # line coverage
+```
+
+Requires [Foundry](https://book.getfoundry.sh/getting-started/installation).
+Dependencies (`forge-std`, `openzeppelin-contracts`) are git submodules — clone
+with `--recurse-submodules`, or run `git submodule update --init --recursive`.
+
+## Scope
+
+Testnet only. No mainnet deployment, no real funds, no production KYC vendor
+(the gate is an interface with a permissive default), no token.
+
+## License
+
+MIT. See [LICENSE](LICENSE).
