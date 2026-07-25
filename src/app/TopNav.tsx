@@ -56,6 +56,14 @@ export function TopNav() {
           <AskTrigger pill />
           <NotificationBell />
           <ConnectButton />
+          {/* Before the primary call to action, because it is the prerequisite for
+              it: a wish is funded in VOTIVE, and an empty wallet cannot make one. */}
+          <Link
+            href="/faucet"
+            className={`pill navFaucet${pathname === "/faucet" ? " active" : ""}`}
+          >
+            Get VOTIVE
+          </Link>
           <Link href="/create" className="pill pillPrimary">
             Make a wish
           </Link>
@@ -76,6 +84,12 @@ export function TopNav() {
         <div className="mobileMenu">
           <Link href="/create" className="pill pillPrimary mobileMenuCta">
             Make a wish
+          </Link>
+          <Link
+            href="/faucet"
+            className={`mobileMenuLink${pathname === "/faucet" ? " active" : ""}`}
+          >
+            Get VOTIVE
           </Link>
           <Link
             href="/guide"

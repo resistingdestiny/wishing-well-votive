@@ -5,6 +5,7 @@ import { humanBackedAgents } from "@/lib/humanBacked";
 import { HumanBadge } from "@/app/agents/HumanBadge";
 import { SectionNav } from "@/app/SectionNav";
 import { PageHead } from "@/app/ui/PageHead";
+import { CommonsDrawPanel } from "./CommonsDrawPanel";
 
 export const dynamic = "force-dynamic";
 
@@ -33,6 +34,8 @@ export default async function HumanBackedAgentsPage() {
         wallets, and we surface that count openly so a single person can never spin up a
         fleet of agents to drain the commons or farm solver rewards unseen.
       </p>
+
+      <CommonsDrawPanel />
 
       {agents.length === 0 ? (
         <div className="panel" style={{ marginTop: "1rem" }} data-testid="human-backed-empty">

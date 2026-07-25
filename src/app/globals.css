@@ -418,6 +418,24 @@ p.lede {
   border-color: #2e3548;
 }
 
+/* The faucet sits beside the primary call to action because it is the
+   prerequisite for it — a wish is funded in VOTIVE. Gold rather than ink so the
+   two read as a sequence (get the token, then make the wish) instead of as two
+   competing buttons. */
+.navFaucet {
+  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+  color: var(--accent);
+  font-weight: 600;
+}
+.navFaucet:hover {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, var(--card));
+}
+.navFaucet.active {
+  background: color-mix(in srgb, var(--accent) 12%, var(--card));
+  border-color: var(--accent);
+}
+
 .badge {
   display: inline-block;
   padding: 0.18rem 0.65rem;
@@ -1808,7 +1826,8 @@ input.switch:checked::after { transform: translateX(16px); }
   .navPill.navActions {
     gap: 0.4rem;
   }
-  .navActions .pillPrimary {
+  .navActions .pillPrimary,
+  .navActions .navFaucet {
     padding: 0.42rem 0.7rem;
   }
   main {
@@ -1822,7 +1841,8 @@ input.switch:checked::after { transform: translateX(16px); }
 @media (max-width: 480px) {
   /* Small phones: the hamburger menu carries a full-width create CTA, so the
      topbar keeps only the action cluster (no squeezed two-line pill). */
-  .navActions .pillPrimary {
+  .navActions .pillPrimary,
+  .navActions .navFaucet {
     display: none;
   }
 }

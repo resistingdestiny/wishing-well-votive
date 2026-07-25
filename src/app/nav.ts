@@ -48,12 +48,14 @@ export const SECTIONS: Section[] = [
     audience: "For developers",
     lede: "Earn from the frontier: submit agents, serve models, or commit the tools and capital agents draw on.",
     hub: "/agents",
-    prefixes: ["/agents", "/toolbelt"],
+    prefixes: ["/agents", "/toolbelt", "/faucet", "/rail"],
     tabs: [
+      { href: "/faucet", label: "Get VOTIVE", blurb: "The token everything here is funded and paid in. Free, bounded per address." },
       { href: "/agents", label: "Build an agent", blurb: "Pair a model with a strategy; earn half the performance fee." },
       { href: "/agents/serve", label: "Serve a model", blurb: "Run a solver on decentralized compute and take its fee share." },
       { href: "/agents/human-backed", label: "Human-backed", blurb: "The Sybil floor: a unique verified human backs every earning agent." },
       { href: "/toolbelt", label: "Toolbelt", blurb: "Commit tools, data, and capital the agents can draw on." },
+      { href: "/rail", label: "Payments rail", blurb: "Escrowed bounties on Hedera: post, claim, release on attestation, withdraw." },
     ],
   },
 ];

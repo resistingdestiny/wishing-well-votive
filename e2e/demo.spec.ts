@@ -244,3 +244,61 @@ test.describe("a founder managing their wish's position", () => {
     await expect(page.locator("body")).toContainText(/now quotable/i, { timeout: 180_000 });
   });
 });
+
+test.describe("the faucet", () => {
+  /**
+   * Reads go through the app's own public client, not the wallet, so this works
+   * disconnected — which is exactly the state a visitor arrives in. If the token
+   * were misconfigured the panel would render its "no faucet here" branch, so
+   * asserting on the symbol proves the contract answered.
+   */
+  test("a visitor with no wallet can still see what they would get", async ({ page }) => {
+    await page.goto("/faucet");
+    const panel = page.getByTestId("faucet-panel");
+    await expect(panel).toBeVisible({ timeout: 20_000 });
+    await expect(panel).toContainText("VOTIVE");
+    await expect(panel).toContainText(/per draw/);
+    // Supply is read from the token itself; zero would mean nothing was minted.
+    await expect(panel).toContainText(/minted so far/);
+  });
+
+  test("it asks for a wallet rather than pretending to work without one", async ({ page }) => {
+    await page.goto("/faucet");
+    await expect(page.getByTestId("faucet-panel")).toContainText(/Connect a wallet/i);
+  });
+});
+
+test.describe("the payments rail", () => {
+  test("escrow is read from the rail, not written up from a script run", async ({ page }) => {
+    await page.goto("/rail");
+    // Either the rail answered, or it said plainly that it could not be read.
+    // What must never happen is a confident zero standing in for both.
+    const answered = page.getByTestId("rail-panel");
+    await expect(answered).toBeVisible({ timeout: 20_000 });
+    await expect(answered).toContainText(/held in escrow right now|could not be read/);
+  });
+});
+
+test.describe("the commons", () => {
+  test("the draw panel states the ceiling rule rather than just a number", async ({ page }) => {
+    await page.goto("/agents/human-backed");
+    const panel = page.getByTestId("commons-panel");
+    await expect(panel).toBeVisible({ timeout: 20_000 });
+    await expect(panel).toContainText(/evidence tier multiplied by your record/i);
+    await expect(panel).toContainText(/Connect a wallet/i);
+  });
+});
+
+test("the faucet is one click from anywhere", async ({ page }) => {
+  // It sits beside "Make a wish" because it is the prerequisite for it. If it
+  // were only a section tab, a visitor landing on a wish would have to know to
+  // go looking under Build first.
+  for (const path of ["/", "/explore", "/live"]) {
+    await page.goto(path);
+    const link = page.getByRole("link", { name: "Get VOTIVE" }).first();
+    await expect(link, `no faucet link on ${path}`).toBeVisible();
+  }
+  await page.getByRole("link", { name: "Get VOTIVE" }).first().click();
+  await expect(page).toHaveURL(/\/faucet$/);
+  await expect(page.getByTestId("faucet-panel")).toBeVisible({ timeout: 20_000 });
+});

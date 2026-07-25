@@ -31,6 +31,10 @@ const KNOWN = {
     track: "world" as const,
     what: "An agent wallet was bound to a verified human",
   },
+  "faucet-drawn": {
+    track: "votive" as const,
+    what: "Somebody drew VOTIVE from the faucet",
+  },
   "commons-drawn": {
     track: "world" as const,
     what: "An agent drew shared capital to pay for the job",

@@ -16,6 +16,7 @@ export type TxKind =
   | "share-claimed"
   | "deferred-claimed"
   | "human-attested"
+  | "faucet-drawn"
   | "commons-drawn"
   | "resource-granted"
   | "conduct-reported"
