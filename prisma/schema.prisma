@@ -87,3 +87,38 @@ model PushSubscription {
 
   @@index([subscriber])
 }
+
+/// Every transaction the protocol has sent, recorded when we send it.
+///
+/// The alternative — replaying `eth_getLogs` on page load — cannot work against
+/// a public endpoint: Base Sepolia caps a range at 2000 blocks, so history older
+/// than about an hour is simply unreachable, and a rejected query is
+/// indistinguishable from a contract that has never emitted anything. Writing the
+/// row at the moment we broadcast is both complete and free to read back.
+///
+/// This records what *happened*. Current state — a votive's phase, an operator's
+/// standing, what is left of an allowance — is never cached here; it is read from
+/// the contracts' own view functions, because a cached balance is a wrong balance
+/// as soon as anybody transacts without us.
+model ChainTx {
+  id        String   @id @default(cuid())
+  /// Which integration this demonstrates: votive, world, hedera, aqua.
+  track     String
+  /// CAIP-ish chain key, e.g. "base-sepolia" or "hedera-testnet".
+  chain     String
+  txHash    String
+  /// One line a judge can read without knowing the codebase.
+  what      String
+  detail    String
+  /// The contract this touched, when there is a single obvious one.
+  contract  String?
+  /// The votive, agent wallet, or resource this concerned.
+  subject   String?
+  blockNumber BigInt?
+  createdAt DateTime @default(now())
+
+  @@unique([txHash, what])
+  @@index([track])
+  @@index([chain])
+  @@index([createdAt])
+}
