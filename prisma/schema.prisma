@@ -1,0 +1,89 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Story {
+  id            String   @id @default(cuid())
+  cell          String?  @unique
+  wisher        String
+  prose         String
+
+  fullStory     String?
+  parsed        Json
+  capabilityId  String
+  conditionHash String
+  storyHash     String
+  createdAt     DateTime @default(now())
+
+  featured      Boolean  @default(false)
+  curatorNote   String?
+
+  @@index([capabilityId])
+  @@index([featured])
+}
+
+model RunEntry {
+  seq          Int      @id
+  ts           DateTime
+  trigger      String
+  kind         String
+  capabilityId String?
+  cell         String?
+  model        String
+  provider     String
+  pass         Boolean?
+  score        Float?
+  detail       Json
+  inputTokens  Int
+  outputTokens Int
+  hash         String   @unique
+  signature    String
+  signer       String
+
+  @@index([capabilityId, model])
+  @@index([kind])
+}
+
+model Watch {
+  id         String   @id @default(cuid())
+  subscriber String
+  kind       String
+  target     String
+  createdAt  DateTime @default(now())
+
+  @@unique([subscriber, kind, target])
+  @@index([kind, target])
+}
+
+model Notification {
+  id           String   @id @default(cuid())
+  dedupeKey    String   @unique
+  subscriber   String
+  kind         String
+  title        String
+  body         String
+  cell         String?
+  capabilityId String?
+  triggerSeq   Int
+  read         Boolean  @default(false)
+  createdAt    DateTime @default(now())
+
+  @@index([subscriber, read])
+  @@index([subscriber, createdAt])
+}
+
+model PushSubscription {
+  id         String   @id @default(cuid())
+  subscriber String
+  endpoint   String   @unique
+  p256dh     String
+  auth       String
+  createdAt  DateTime @default(now())
+
+  @@index([subscriber])
+}
