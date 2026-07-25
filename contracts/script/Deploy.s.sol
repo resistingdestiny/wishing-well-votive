@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
+import {AquaVotive} from "../src/AquaVotive.sol";
 import {AttestationRegistry} from "../src/AttestationRegistry.sol";
 import {NativeVotive} from "../src/NativeVotive.sol";
-import {AquaVotive} from "../src/AquaVotive.sol";
 import {VotiveFactory} from "../src/VotiveFactory.sol";
 import {OpenAccessGate} from "../src/gates/OpenAccessGate.sol";
 import {Script} from "forge-std/Script.sol";
@@ -52,7 +52,7 @@ contract Deploy is Script {
         AttestationRegistry registry = new AttestationRegistry(owner, attestor);
         OpenAccessGate accessGate = new OpenAccessGate();
         NativeVotive nativeImplementation = new NativeVotive();
-            // AquaVotive rather than TokenVotive: it is a strict superset — the same
+        // AquaVotive rather than TokenVotive: it is a strict superset — the same
         // votive, plus the ability to quote its own principal through Aqua. Making
         // it the implementation is what makes *every* token-funded wish a vault
         // that can offer itself, rather than a privilege of specially-deployed ones.

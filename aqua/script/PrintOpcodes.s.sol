@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.30;
 
+import {Program, ProgramBuilder} from "@1inch/swap-vm-test/utils/ProgramBuilder.sol";
 import {Controls} from "@1inch/swap-vm/instructions/Controls.sol";
 import {XYCSwap} from "@1inch/swap-vm/instructions/XYCSwap.sol";
 import {AquaOpcodesDebug} from "@1inch/swap-vm/opcodes/AquaOpcodesDebug.sol";
-import {Program, ProgramBuilder} from "@1inch/swap-vm-test/utils/ProgramBuilder.sol";
 import {Script} from "forge-std/Script.sol";
 import {console} from "forge-std/console.sol";
 
@@ -25,6 +25,8 @@ contract PrintOpcodes is Script, AquaOpcodesDebug {
         Program memory p = ProgramBuilder.init(_opcodes());
         console.log("official table length (votive opcode base): %s", _opcodes().length);
         console.log("xycSwapXD opcode: %s", uint8(p.build(XYCSwap._xycSwapXD)[0]));
-        console.log("salt opcode:      %s", uint8(p.build(Controls._salt, abi.encodePacked(uint256(1)))[0]));
+        console.log(
+            "salt opcode:      %s", uint8(p.build(Controls._salt, abi.encodePacked(uint256(1)))[0])
+        );
     }
 }

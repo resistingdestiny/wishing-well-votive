@@ -236,6 +236,7 @@ test.describe("a founder managing their wish's position", () => {
     const offerField = page.getByPlaceholder("60");
     await expect(offerField).toBeVisible({ timeout: 30_000 });
     await offerField.fill("40");
+    await page.getByPlaceholder("120").fill("80");
 
     await page.getByRole("button", { name: /Offer this wish as a position/i }).click();
     // The encoding guard runs before anything is sent, so a failure here would

@@ -3,19 +3,19 @@ pragma solidity 0.8.30;
 
 import {Aqua} from "@1inch/aqua/src/Aqua.sol";
 import {TokenMock} from "@1inch/solidity-utils/contracts/mocks/TokenMock.sol";
+import {MockTaker} from "@1inch/swap-vm-test/mocks/MockTaker.sol";
+import {Program, ProgramBuilder} from "@1inch/swap-vm-test/utils/ProgramBuilder.sol";
 import {Controls} from "@1inch/swap-vm/instructions/Controls.sol";
 import {XYCSwap} from "@1inch/swap-vm/instructions/XYCSwap.sol";
 import {ISwapVM} from "@1inch/swap-vm/interfaces/ISwapVM.sol";
 import {MakerTraitsLib} from "@1inch/swap-vm/libs/MakerTraits.sol";
 import {TakerTraitsLib} from "@1inch/swap-vm/libs/TakerTraits.sol";
 import {AquaOpcodesDebug} from "@1inch/swap-vm/opcodes/AquaOpcodesDebug.sol";
-import {MockTaker} from "@1inch/swap-vm-test/mocks/MockTaker.sol";
-import {Program, ProgramBuilder} from "@1inch/swap-vm-test/utils/ProgramBuilder.sol";
 import {Script} from "forge-std/Script.sol";
 import {console} from "forge-std/console.sol";
 
-import {IVotiveAttestations, IVotiveState} from "../src/interfaces/IVotiveReads.sol";
 import {VotiveAquaRouter} from "../src/VotiveAquaRouter.sol";
+import {IVotiveAttestations, IVotiveState} from "../src/interfaces/IVotiveReads.sol";
 
 /// @notice The wish itself as the maker: one vault per wish, quoting its own
 ///         principal, gated on who is allowed to fill it.
@@ -34,7 +34,7 @@ import {VotiveAquaRouter} from "../src/VotiveAquaRouter.sol";
 ///      Everything it reads is the deployed protocol. Nothing here is a mock.
 interface IAquaVotive {
     function configureAqua(address aqua, address router) external;
-    function shipToAqua(bytes calldata strategy, address quoteToken, uint256 offer)
+    function shipToAqua(bytes calldata strategy, address quoteToken, uint256 offer, uint256 asking)
         external
         returns (bytes32);
     function isPositionOpen() external view returns (bool);
@@ -127,7 +127,8 @@ contract ShipVaultPosition is Script, AquaOpcodesDebug {
         vm.startBroadcast();
         if (!IAquaVotive(votive).isPositionOpen()) {
             IAquaVotive(votive).configureAqua(aqua, router);
-            bytes32 hash = IAquaVotive(votive).shipToAqua(abi.encode(order), quoteToken, offer);
+            bytes32 hash = IAquaVotive(votive)
+                .shipToAqua(abi.encode(order), quoteToken, offer, vm.envUint("VOTIVE_ASKING"));
             console.log("  Position shipped by the votive itself");
             console.log("    strategy        %s", vm.toString(hash));
         } else {

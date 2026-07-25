@@ -274,3 +274,55 @@ page reads a votive and its position together, and the failure surfaces as a
 panel confidently describing a position that is fine. Use
 `base-sepolia-rpc.publicnode.com`, which the project's `.env.example` already
 suggested.
+
+---
+
+# The Votive token, and a fill that actually moved it
+
+Redeployed 2026-07-25 with the protocol's own ERC-20 as the funding unit, and a
+position filled so the wish's principal genuinely changed hands.
+
+| contract | address |
+|---|---|
+| `VotiveToken` — **VOTIVE** | `0x736655e2cEBB322D493b4219A6669C81bDe90001` |
+| `VotiveToken` — **vUSD** (quote) | `0xdd22b0aff43419d73DbFd5377d24Cf23C1A08C51` |
+| `VotiveFactory` | `0xc673B8DEf8d1A73FE6962373126dBC6a3a903301` |
+| `AttestationRegistry` | `0x9620b2BD26e367eD84769FdA064790B08Bf6dA65` |
+| `AquaVotive` (token implementation) | `0xcC5F3349795F2A51608F8759fA9022c4052b677E` |
+| the wish | `0x7146692252a0f146fc116bae17e9a4a00aaf401b` |
+
+VOTIVE is a real ERC-20 with permit and a bounded per-address faucet, so anybody
+turning up to a demo can get tokens without having been handed them first.
+
+## The fill
+
+Transaction
+[`0xd2067c3e…138afe`](https://sepolia.basescan.org/tx/0xd2067c3e55752b14f0a498f605ab876ec5f8b8e07e09448ffa154ce2be138afe).
+
+| | before | after |
+|---|---|---|
+| wish holds VOTIVE | 100 | **85** |
+| filler holds VOTIVE | 0 | **15** |
+| wish holds vUSD | 0 | **80** |
+
+The curve: `40 × 60 ÷ (120 + 40) = 15`. Reserves afterwards read `45 VOTIVE ·
+160 vUSD` — the 60 offered less the 15 taken, and the 120 asking plus the 40 paid.
+
+The performance fee was **zero, correctly**: the threshold is the wish's own
+principal of 100, the filler paid 40, so there was no surplus. Nothing is charged
+on the founder's own money coming back. Fill above 100 to see the fee move.
+
+## The defect this run exposed
+
+Shipping a position transfers nothing — that is Aqua's design — so a position
+that has only ever been shipped has moved no tokens at all. Asking for the actual
+transfers is what surfaced the bug:
+
+`shipToAqua` hardcoded the quote-side reserve to zero, on the reasoning that a
+votive sells what it holds rather than making a two-sided market. True about
+custody, false about pricing: `XYCSwap` requires both reserves non-zero, so every
+position shipped perfectly and **could never be filled by anybody**. Invisible
+from the outside, and no test caught it because no test tried to fill one.
+
+`shipToAqua` now takes an asking price, refuses zero with
+`AskingPriceRequired()`, and the UI asks for it.
