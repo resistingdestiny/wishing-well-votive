@@ -12,6 +12,8 @@ import {
   RESOLVER_KIND,
 } from "@/lib/chain";
 import { prisma } from "@/lib/db";
+import { readAquaPosition } from "@/lib/aquaPosition";
+import { AquaPanel } from "@/app/AquaPanel";
 import { amount, shortAddr, days, wishTag, usdEquivalent } from "@/lib/format";
 import { OwnerActions } from "./OwnerActions";
 import { OnchainHistory } from "./OnchainHistory";
@@ -98,6 +100,11 @@ export default async function WishDetail({
   }
   const isClaimable = cell.state === 6;
 
+  // The Aqua position for this wish, if one has been shipped. Null is the normal
+  // case — most wishes are never made tradeable — so the panel says so rather
+  // than showing somebody else's position.
+  const aquaPosition = await readAquaPosition(cell.address).catch(() => null);
+
   const { registry } = chainConfig();
   let resolverBinding: { kind: string; met: boolean } | null = null;
   if (registry) {
@@ -125,6 +132,11 @@ export default async function WishDetail({
       <p className="muted" style={{ fontSize: "0.85rem", marginBottom: "0.5rem" }}>
         <Link href="/explore">← All wishes</Link>
       </p>
+      {aquaPosition ? (
+        <div style={{ marginBottom: 20 }}>
+          <AquaPanel position={aquaPosition} />
+        </div>
+      ) : null}
       <div
         className={`wishHero${cell.state === 3 || cell.state === 6 ? " fulfilled" : ""}`}
         data-reveal

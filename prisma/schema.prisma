@@ -122,3 +122,31 @@ model ChainTx {
   @@index([chain])
   @@index([createdAt])
 }
+
+/// An Aqua position shipped for a votive.
+///
+/// Recorded when the strategy is shipped, for the same reason transactions are:
+/// Aqua keys custody on (maker, vm, strategyHash, pair), and none of that is
+/// derivable from the votive's address. Without a row, a position can only be
+/// found by already knowing its hash — which is fine for one demo position in an
+/// environment variable and useless for a protocol with more than one.
+///
+/// Nothing about the position's *state* is stored. Balances and gates are read
+/// from Aqua and the attestation registry on every load.
+model AquaStrategy {
+  id           String   @id @default(cuid())
+  /// The votive this position is priced off.
+  votive       String   @unique
+  strategyHash String
+  aqua         String
+  router       String
+  maker        String
+  taker        String?
+  tokenA       String
+  tokenB       String
+  chain        String   @default("base-sepolia")
+  shippedTx    String?
+  createdAt    DateTime @default(now())
+
+  @@index([chain])
+}

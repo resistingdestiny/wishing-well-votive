@@ -11,6 +11,7 @@
  * what this page says and what a fill would actually do cannot drift apart.
  */
 import { createPublicClient, http, parseAbi, type Chain } from "viem";
+import { prisma } from "@/lib/db";
 import { explorerAddress } from "@/lib/txLog";
 
 const BASE_SEPOLIA: Chain = {
@@ -108,11 +109,77 @@ export interface AquaPosition {
 
 const TREASURY = "0x0000000000000000000000000000000000000FEE" as const;
 
-export async function readAquaPosition(): Promise<AquaPosition | null> {
-  const { aqua, router, tokenA, tokenB, taker, strategy, votive } = AQUA;
-  const registry = addr("NEXT_PUBLIC_WELL_REGISTRY");
+/** Where a position's identifying details come from. */
+interface StrategyRecord {
+  votive: `0x${string}`;
+  strategyHash: `0x${string}`;
+  aqua: `0x${string}`;
+  router: `0x${string}`;
+  maker: `0x${string}`;
+  taker?: `0x${string}`;
+  tokenA: `0x${string}`;
+  tokenB: `0x${string}`;
+}
 
-  if (!aqua || !router || !tokenA || !tokenB || !strategy || !votive || !registry) return null;
+/**
+ * Find the position shipped for a votive.
+ *
+ * The database first, because Aqua keys custody on (maker, vm, strategyHash,
+ * pair) and none of that is derivable from a votive's address — a protocol with
+ * more than one position cannot find the second one any other way. Environment
+ * variables are the fallback, and they can only ever describe one.
+ */
+export async function strategyFor(
+  votive?: `0x${string}`,
+): Promise<StrategyRecord | null> {
+  const row = await prisma.aquaStrategy
+    .findFirst({
+      ...(votive ? { where: { votive: votive.toLowerCase() } } : {}),
+      orderBy: { createdAt: "desc" },
+    })
+    .catch(() => null);
+
+  if (row) {
+    return {
+      votive: row.votive as `0x${string}`,
+      strategyHash: row.strategyHash as `0x${string}`,
+      aqua: row.aqua as `0x${string}`,
+      router: row.router as `0x${string}`,
+      maker: row.maker as `0x${string}`,
+      ...(row.taker ? { taker: row.taker as `0x${string}` } : {}),
+      tokenA: row.tokenA as `0x${string}`,
+      tokenB: row.tokenB as `0x${string}`,
+    };
+  }
+
+  const maker = addr("NEXT_PUBLIC_AQUA_MAKER");
+  if (!AQUA.aqua || !AQUA.router || !AQUA.tokenA || !AQUA.tokenB || !AQUA.strategy || !AQUA.votive || !maker) {
+    return null;
+  }
+  // Only answer from the environment when it describes the votive being asked
+  // about; otherwise a wish with no position would show somebody else's.
+  if (votive && votive.toLowerCase() !== AQUA.votive.toLowerCase()) return null;
+
+  return {
+    votive: AQUA.votive,
+    strategyHash: AQUA.strategy,
+    aqua: AQUA.aqua,
+    router: AQUA.router,
+    maker,
+    ...(AQUA.taker ? { taker: AQUA.taker } : {}),
+    tokenA: AQUA.tokenA,
+    tokenB: AQUA.tokenB,
+  };
+}
+
+export async function readAquaPosition(
+  forVotive?: `0x${string}`,
+): Promise<AquaPosition | null> {
+  const found = await strategyFor(forVotive);
+  const registry = addr("NEXT_PUBLIC_WELL_REGISTRY");
+  if (!found || !registry) return null;
+
+  const { aqua, router, tokenA, tokenB, taker, strategyHash: strategy, votive } = found;
 
   // Batched: a dozen small reads answered one at a time against a public endpoint
   // is the difference between a page and a wait.
@@ -122,9 +189,9 @@ export async function readAquaPosition(): Promise<AquaPosition | null> {
     batch: { multicall: { wait: 12 } },
   });
 
-  // Whoever shipped the strategy. Aqua keys custody on the maker, so without it
-  // the balance read is not "zero", it is a different strategy's.
-  const maker = addr("NEXT_PUBLIC_AQUA_MAKER");
+  // Whoever shipped the strategy. Aqua keys custody on the maker, so with the
+  // wrong one the balance read is not "zero", it is a different strategy's.
+  const maker = found.maker;
 
   const [intent, state, principal, base, count, symA, symB] = await Promise.all([
     pc.readContract({ address: votive, abi: votiveAbi, functionName: "intent" }).catch(() => null),

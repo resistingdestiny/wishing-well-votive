@@ -167,3 +167,19 @@ test.describe("the Aqua position", () => {
     await expect(body).toContainText(/Fillable/i);
   });
 });
+
+test("the Aqua vault balance is shown on the wish itself, not only on /live", async ({ page }) => {
+  const votive = process.env.NEXT_PUBLIC_AQUA_VOTIVE;
+  test.skip(!votive, "needs a shipped position");
+
+  await page.goto(`/wish/${votive}`);
+  const body = page.locator("body");
+
+  await expect(page.getByRole("heading", { name: /1inch Aqua/i })).toBeVisible();
+  // The custodied position — read from Aqua, and previously fetched and dropped
+  // on the floor rather than rendered.
+  await expect(body).toContainText(/In the Aqua vault for this strategy/i);
+  await expect(body).toContainText(/safeBalances/);
+  await expect(body).toContainText(/VDA/);
+  await expect(body).toContainText(/VDB/);
+});
