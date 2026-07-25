@@ -67,7 +67,7 @@ export default async function WishDetail({
   const isCell = (await publicClient().readContract({
     address: factory,
     abi: factoryAbi,
-    functionName: "isCell",
+    functionName: "isVotive",
     args: [address],
   })) as boolean;
   if (!isCell) notFound();
@@ -103,21 +103,17 @@ export default async function WishDetail({
   if (registry) {
     try {
       const pc = publicClient();
-      const binding = (await pc.readContract({
+      // Our attestation registry answers the condition itself rather than
+      // pointing at a resolver contract, so there is no binding to look up first
+      // — one call replaces two, and there is no "bound but unmet" state to
+      // represent because an unattested condition simply reads false.
+      const met = (await pc.readContract({
         address: registry,
         abi: registryAbi,
-        functionName: "conditionBinding",
-        args: [cell.conditionHash],
-      })) as [`0x${string}`, `0x${string}`, `0x${string}`, boolean];
-      if (binding[3]) {
-        const met = (await pc.readContract({
-          address: registry,
-          abi: registryAbi,
-          functionName: "conditionMet",
-          args: [cell.address, cell.conditionHash],
-        })) as boolean;
-        resolverBinding = { kind: RESOLVER_KIND[binding[0]] ?? "resolver", met };
-      }
+        functionName: "isConditionMet",
+        args: [cell.address, cell.conditionHash],
+      })) as boolean;
+      resolverBinding = { kind: "attested condition", met };
     } catch {
       resolverBinding = null;
     }

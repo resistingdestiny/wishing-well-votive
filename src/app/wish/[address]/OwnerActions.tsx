@@ -12,7 +12,8 @@ import {
 } from "wagmi";
 import { useRouter } from "next/navigation";
 import { getAddress, isAddress, formatEther, parseEther, parseUnits, parseSignature } from "viem";
-import { cellAbi, erc20Abi } from "@/lib/chain";
+import { cellAbi, tokenVotiveAbi, erc20Abi } from "@/lib/chain";
+import { noteTx, type TxKind } from "@/lib/noteTx";
 import { appChain } from "@/lib/wagmi";
 import { shortAddr } from "@/lib/format";
 
@@ -58,18 +59,18 @@ export function OwnerActions({ address }: { address: `0x${string}` }) {
   const router = useRouter();
 
   const stateRead = useReadContract({ address: cell, abi: cellAbi, functionName: "state" });
-  const schemaRead = useReadContract({ address: cell, abi: cellAbi, functionName: "schema" });
-  const timeoutsRead = useReadContract({ address: cell, abi: cellAbi, functionName: "timeouts" });
+  const schemaRead = useReadContract({ address: cell, abi: cellAbi, functionName: "intent" });
+  const timeoutsRead = useReadContract({ address: cell, abi: cellAbi, functionName: "deadlines" });
   const lastActivityRead = useReadContract({
     address: cell,
     abi: cellAbi,
-    functionName: "lastWisherActivity",
+    functionName: "lastFounderSignal",
   });
-  const nonceRead = useReadContract({ address: cell, abi: cellAbi, functionName: "amendNonce" });
+  const nonceRead = useReadContract({ address: cell, abi: cellAbi, functionName: "redirectNonce" });
   const owedRead = useReadContract({
     address: cell,
     abi: cellAbi,
-    functionName: "owed",
+    functionName: "deferred",
     args: connected ? [connected] : undefined,
     query: { enabled: !!connected },
   });
@@ -95,12 +96,12 @@ export function OwnerActions({ address }: { address: `0x${string}` }) {
   const distRootRead = useReadContract({
     address: cell,
     abi: cellAbi,
-    functionName: "distributionRoot",
+    functionName: "shareRoot",
   });
   const distChalRead = useReadContract({
     address: cell,
     abi: cellAbi,
-    functionName: "distributionChallengeDeadline",
+    functionName: "shareChallengeEndsAt",
   });
   const hasDistribution = !!distRootRead.data && distRootRead.data !== ZERO_ROOT;
   const [distLeaf, setDistLeaf] = useState<{
@@ -130,7 +131,7 @@ export function OwnerActions({ address }: { address: `0x${string}` }) {
   const claimedRead = useReadContract({
     address: cell,
     abi: cellAbi,
-    functionName: "isClaimed",
+    functionName: "hasClaimedShare",
     args: distLeaf ? [BigInt(distLeaf.index)] : undefined,
     query: { enabled: !!distLeaf },
   });
@@ -223,11 +224,24 @@ export function OwnerActions({ address }: { address: `0x${string}` }) {
       const hash = await writeContractAsync({
         address: cell,
         abi: cellAbi,
-        functionName: functionName as "ping",
+        functionName: functionName as "heartbeat",
         args: args as [],
       });
       setTxHash(hash);
       await client.waitForTransactionReceipt({ hash });
+      // Named per action so the feed reads as a sentence rather than "a call was
+      // made". Unknown actions are simply not recorded, which is better than
+      // recording them under a label that means nothing.
+      const KIND: Record<string, TxKind> = {
+        heartbeat: "wish-heartbeat",
+        redirect: "wish-redirected",
+        escheat: "wish-escheated",
+        claimShare: "share-claimed",
+        claimDeferred: "deferred-claimed",
+        topUp: "wish-topped-up",
+      };
+      const kind = KIND[functionName];
+      if (kind) noteTx(kind, hash, { subject: cell, contract: cell });
       setDone(id);
       refetchAll();
 
@@ -305,8 +319,8 @@ export function OwnerActions({ address }: { address: `0x${string}` }) {
       await client.waitForTransactionReceipt({ hash: approveHash });
       const hash = await writeContractAsync({
         address: cell,
-        abi: cellAbi,
-        functionName: "topUpERC20",
+        abi: tokenVotiveAbi,
+        functionName: "topUp",
         args: [amt],
       });
       setTxHash(hash);

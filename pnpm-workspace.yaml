@@ -1,0 +1,22 @@
+allowBuilds:
+  '@prisma/client': set this to true or false
+  '@prisma/engines': set this to true or false
+  bufferutil: set this to true or false
+  esbuild: set this to true or false
+  keccak: set this to true or false
+  prisma: set this to true or false
+  secp256k1: set this to true or false
+  utf-8-validate: set this to true or false
+# Native and codegen packages that need their install scripts to run.
+# Prisma generates its client here; the rest are native addons the app links
+# against. Listing them explicitly is pnpm's way of saying "these, and nothing
+# else, may execute code at install time".
+onlyBuiltDependencies:
+  - "@prisma/client"
+  - "@prisma/engines"
+  - prisma
+  - esbuild
+  - keccak
+  - secp256k1
+  - bufferutil
+  - utf-8-validate

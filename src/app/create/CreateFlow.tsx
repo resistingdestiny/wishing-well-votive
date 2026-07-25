@@ -16,7 +16,7 @@ import {
   getAddress,
   decodeAbiParameters,
 } from "viem";
-import { factoryAbi, legacyFactoryAbi, factorySupportsFiatSchema, erc20Abi, registryAbi } from "@/lib/chain";
+import { factoryAbi, erc20Abi, toIntent, DEFAULT_DEADLINES, ANY_TERMS } from "@/lib/chain";
 import {
   appChain,
   FACTORY_ADDRESS,
@@ -28,6 +28,7 @@ import { FiatFundForm } from "../fund/FiatFundForm";
 import { WatchButton } from "@/app/WatchButton";
 import { Field } from "@/app/ui/Field";
 import { addMyCell } from "@/lib/myCells";
+import { noteTx } from "@/lib/noteTx";
 
 const RAIL_STEPS = ["Your wish", "Review & terms", "Fund it", "Done"] as const;
 
@@ -323,29 +324,19 @@ export function CreateFlow() {
 
         beneficiariesRoot: ("0x" + "0".repeat(64)) as `0x${string}`,
       } as const;
-      const timeouts = {
-        amendAfter: BigInt(preview.story.amendPolicy.amendAfterDays) * 86400n,
+      // Zero on any clock means "use the factory's default", which is what the
+      // preview showed the founder — so a policy it did not ask about is not
+      // silently overridden here.
+      const deadlines = {
+        guardianAfter: BigInt(preview.story.amendPolicy.amendAfterDays) * 86400n,
         escheatAfter: BigInt(preview.story.amendPolicy.escheatAfterDays) * 86400n,
-        attemptAfter: 0n,
-        claimWindow: 0n,
+        attemptWindow: DEFAULT_DEADLINES.attemptWindow,
       } as const;
 
-      const fiatSchema = await factorySupportsFiatSchema(client, factoryAddress);
-      const wishArgs = fiatSchema
-        ? ([schemaStruct, timeouts] as const)
-        : ([
-            (({ beneficiariesRoot: _root, ...rest }) => rest)(schemaStruct),
-            {
-              amendAfter: timeouts.amendAfter,
-              escheatAfter: timeouts.escheatAfter,
-              attemptAfter: timeouts.attemptAfter,
-            },
-          ] as const);
-      const writeFactoryAbi = fiatSchema ? factoryAbi : legacyFactoryAbi;
+      const intent = toIntent(schemaStruct, depositor);
 
       let hash: `0x${string}`;
       if (fundToken) {
-
         const amt = parseUnits(amount, fundToken.decimals);
         const approveHash = await writeContractAsync({
           address: fundToken.address,
@@ -357,17 +348,17 @@ export function CreateFlow() {
         await client.waitForTransactionReceipt({ hash: approveHash });
         hash = await writeContractAsync({
           address: factoryAddress,
-          abi: writeFactoryAbi,
-          functionName: "createWishERC20",
-          args: [...wishArgs, fundToken.address, amt] as never,
+          abi: factoryAbi,
+          functionName: "openWithToken",
+          args: [intent, deadlines, ANY_TERMS, fundToken.address, amt],
           chainId: appChain.id,
         });
       } else {
         hash = await writeContractAsync({
           address: factoryAddress,
-          abi: writeFactoryAbi,
-          functionName: "createWish",
-          args: wishArgs as never,
+          abi: factoryAbi,
+          functionName: "open",
+          args: [intent, deadlines, ANY_TERMS],
           value: parseEther(amount),
           chainId: appChain.id,
         });
@@ -380,26 +371,20 @@ export function CreateFlow() {
         ? `0x${created.topics[1].slice(26)}`
         : "";
       if (cell) {
+        noteTx("wish-opened", hash, {
+          detail: `${amount} ${fundToken ? fundToken.symbol : "ETH"} from ${depositor}`,
+          contract: factoryAddress,
+          subject: cell,
+        });
         await fetch("/api/register-wish", {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ cell, prose, wisher, fullStory, parsed: preview.story }),
         });
 
-        if (preview.resolver && REGISTRY_ADDRESS) {
-          try {
-            const bindHash = await writeContractAsync({
-              address: REGISTRY_ADDRESS,
-              abi: registryAbi,
-              functionName: "bindCondition",
-              args: [s.conditionHash, preview.resolver.resolverId, preview.resolver.params],
-              chainId: appChain.id,
-            });
-            await client.waitForTransactionReceipt({ hash: bindHash });
-          } catch {
-
-          }
-        }
+        // Nothing to bind: our registry attests a condition directly rather than
+        // wiring it to a resolver contract, and attesting is the attestor's call
+        // to make later — not something a founder does while opening a wish.
       }
       setCellAddress(cell);
       if (cell) addMyCell({ cell, label: prose.slice(0, 80), source: "create" });
