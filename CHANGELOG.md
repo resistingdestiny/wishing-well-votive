@@ -11,6 +11,25 @@ versions.
 
 ### Added
 
+- `VotiveBase` — the protocol core: the `Nascent → Waiting → Attempting →
+  {Fulfilled | Redirected | Escheated}` state machine, the two-rate fee engine,
+  settlement, the redirect and escheat remedies, EIP-712 signed redirects with
+  ERC-1271 support, and the deferred-payout ledger. Value leaves a votive through
+  four doors and no fifth: `settleStream`, settlement, `claimDeferred`,
+  `sweepStray`.
+- `NativeVotive` — the native-asset votive. Supplies four asset hooks and nothing
+  else, so the ETH and token votives cannot drift apart in behaviour.
+- `VotiveFactory` — opens votives as EIP-1167 clones of one immutable
+  implementation, tracks the live set in constant time, and holds the
+  protocol-wide settings. Founders declare the worst terms they will accept, so a
+  repricing cannot be sandwiched onto an opening.
+- `VotiveTypes` and `VotiveLimits` — the shared vocabulary, and the outer bounds
+  on what a votive may ever be opened with, in one place so the factory that
+  quotes them and the votive that enforces them cannot drift.
+- 152 tests across lifecycle, fees, redirects, escheat, payout failure modes and
+  factory administration, including fuzzed value-conservation and fee-ceiling
+  properties.
+
 - `AttestationRegistry` — the protocol's record of what has been demonstrated and
   what has come true. Stores capability verdicts per (capability, model) and
   release-condition verdicts per (votive, condition), binds each votive to the

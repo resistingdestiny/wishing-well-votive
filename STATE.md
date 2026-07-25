@@ -32,9 +32,9 @@ failing test.
 - [x] **2. Attestation layer** — `AttestationRegistry` (capability attestations
       per model, release-condition attestations per votive, votive→capability
       binding), `IAccessGate` + `OpenAccessGate`.
-- [ ] **3. Core votive** — `VotiveTypes`, `VotiveBase` (lifecycle, fee engine,
-      settlement, redirect, escheat, owed ledger), `NativeVotive`,
-      `VotiveFactory`.
+- [x] **3. Core votive** — `VotiveTypes` + `VotiveLimits`, `VotiveBase`
+      (lifecycle, fee engine, settlement, redirect, escheat, deferred ledger),
+      `NativeVotive`, `VotiveFactory`. 152 tests.
 - [ ] **4. Token votive** — `TokenVotive`, ERC-20 creation path, funding-token
       allowlist.
 - [ ] **5. Multi-party settlement** — pro-rata distribution to the active set and
@@ -79,6 +79,20 @@ Nothing is blocked.
   newly-released weak model failing an eval would slam shut a gate that a strong
   model had already opened.
 - **Payouts push, then fall back to a pull ledger.** A settlement never reverts
-  because one recipient refuses value; the amount is credited to `owed` and that
-  recipient pulls it later. Terminal transitions must not be blockable by their
-  own beneficiaries.
+  because one recipient refuses value; the amount is credited to `deferred` and
+  that recipient pulls it later at full gas. Terminal transitions must not be
+  blockable by their own beneficiaries.
+- **Votives are EIP-1167 clones of one immutable implementation.** Opening a wish
+  costs a proxy deployment, not a redeployment of the protocol, so small votives
+  are viable; and the factory's bytecode does not grow with the protocol, so the
+  contract-size limit never becomes an architectural constraint. The
+  implementation reference is immutable in the factory — otherwise the fee
+  ceilings compiled into it would only be as durable as the owner's key.
+- **The streaming fee is charged against committed principal, not the declining
+  balance.** Charging the declining balance makes the total depend on how often
+  somebody happens to call `accrue`, which is not a property a fee schedule should
+  have. What is left is a wei of truncation per accrual, always rounding towards
+  the founder.
+- **Founders pass the worst terms they will accept.** `open` applies the factory's
+  current terms and reverts if they exceed the caller's ceiling, so a repricing
+  landing in the same block cannot become the deal somebody thought they signed.

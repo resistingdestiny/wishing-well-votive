@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
+import {IAttestationRegistry} from "./interfaces/IAttestationRegistry.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {Ownable2Step} from "@openzeppelin/contracts/access/Ownable2Step.sol";
 
@@ -31,7 +32,7 @@ import {Ownable2Step} from "@openzeppelin/contracts/access/Ownable2Step.sol";
 ///      is the observation that this model, on this date, could not do it. That
 ///      series is the point of the project as much as the successes are, so it
 ///      is emitted and stored rather than discarded.
-contract AttestationRegistry is Ownable2Step {
+contract AttestationRegistry is IAttestationRegistry, Ownable2Step {
     // ------------------------------------------------------------------ types
 
     /// @notice One attestation. `evidence` is a content hash of the off-chain run
