@@ -111,6 +111,16 @@ on purpose — they are the benchmark record.
 `conditionHash` — *has it been done*. Fulfilment requires an attestation that the
 condition is met for this specific votive.
 
+**Three kinds of wish.** `ReleaseOnCondition` pays a named beneficiary (the
+founder, if none was named). `RealWorldTask` reimburses whoever went and did the
+thing, up to a ceiling the founder agreed to, and sends the rest where a release
+would have gone. `ShareWithActive` is a wish for everyone still waiting: the
+settled value is allocated across the votives that were open at a snapshot block,
+in proportion to what each had parked, and each one pulls its own slice. Fees
+settle on chain *before* the allocation is recorded, so a mis-computed allocation
+can mis-address value but can never overcharge or overdraw — and the attestor can
+correct it during a challenge window, before any of it can be claimed.
+
 **Fee schedule.** Two rates, quoted by the factory and frozen into the votive at
 the moment it opens:
 

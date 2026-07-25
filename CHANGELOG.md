@@ -11,6 +11,15 @@ versions.
 
 ### Added
 
+- `ShareWithActive` — a third wish kind, for wishes meant for everyone still
+  waiting. `fulfilBySharing` settles the fee schedule on chain and *then* records
+  a Merkle allocation over the live set, weighted by what each votive had parked;
+  recipients pull their own slice. An hour-long challenge window lets the attestor
+  correct a mis-computed allocation before any of it can be claimed, every claim is
+  clamped to what remains in the pot, and after ninety days whatever nobody
+  collected goes back to the founder. `VotiveFactory.liveShares` publishes the
+  snapshot the allocation is built from, so the executor's arithmetic is
+  reproducible by anyone.
 - `TokenVotive` — a votive funded in a single ERC-20, plus `openWithToken` and an
   owner-curated funding-token allowlist on the factory. The funding token is
   captured at creation and never re-read, so de-listing blocks new votives
