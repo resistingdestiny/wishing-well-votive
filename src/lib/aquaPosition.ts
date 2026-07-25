@@ -1,0 +1,241 @@
+/**
+ * A votive as a tradeable Aqua position, read live.
+ *
+ * The protocol holds a wish and waits. Aqua turns that wait into something
+ * somebody else can take the other side of: a position priced by four SwapVM
+ * instructions that read the protocol directly, so it *cannot* be filled until the
+ * frontier has reached the job the wish was opened for.
+ *
+ * Everything here is a read. The gates are asked of the same attestation registry
+ * the VM asks, and the balances of the same Aqua contract that custodies them, so
+ * what this page says and what a fill would actually do cannot drift apart.
+ */
+import { createPublicClient, http, parseAbi, type Chain } from "viem";
+import { explorerAddress } from "@/lib/txLog";
+
+const BASE_SEPOLIA: Chain = {
+  id: 84532,
+  name: "Base Sepolia",
+  nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
+  rpcUrls: {
+    default: { http: [process.env.NEXT_PUBLIC_WELL_RPC_URL ?? "https://sepolia.base.org"] },
+  },
+};
+
+const addr = (k: string): `0x${string}` | undefined => {
+  const v = process.env[k];
+  return v && /^0x[0-9a-fA-F]{40}$/.test(v) ? (v as `0x${string}`) : undefined;
+};
+const word = (k: string): `0x${string}` | undefined => {
+  const v = process.env[k];
+  return v && /^0x[0-9a-fA-F]{64}$/.test(v) ? (v as `0x${string}`) : undefined;
+};
+
+export const AQUA = {
+  aqua: addr("NEXT_PUBLIC_AQUA"),
+  router: addr("NEXT_PUBLIC_AQUA_ROUTER"),
+  tokenA: addr("NEXT_PUBLIC_AQUA_TOKEN_A"),
+  tokenB: addr("NEXT_PUBLIC_AQUA_TOKEN_B"),
+  taker: addr("NEXT_PUBLIC_AQUA_TAKER"),
+  strategy: word("NEXT_PUBLIC_AQUA_STRATEGY"),
+  votive: addr("NEXT_PUBLIC_AQUA_VOTIVE"),
+};
+
+const aquaAbi = parseAbi([
+  "function safeBalances(address maker, address vm, bytes32 strategyHash, address tokenA, address tokenB) view returns (uint256, uint256)",
+]);
+
+const routerAbi = parseAbi([
+  "function votiveOpcodeBase() view returns (uint256)",
+  "function VOTIVE_OPCODE_COUNT() view returns (uint256)",
+]);
+
+const registryAbi = parseAbi([
+  "function isCapabilityOpen(bytes32) view returns (bool)",
+  "function isConditionMet(address votive, bytes32 conditionHash) view returns (bool)",
+]);
+
+const votiveAbi = parseAbi([
+  "function state() view returns (uint8)",
+  "function principal() view returns (uint256)",
+  "struct Intent { uint8 kind; address founder; address guardian; address beneficiary; address fallbackTo; bytes32 capabilityId; bytes32 conditionHash; bytes32 storyHash; uint256 expenseBudget; bool irrevocable; }",
+  "function intent() view returns (Intent)",
+]);
+
+const erc20 = parseAbi([
+  "function balanceOf(address) view returns (uint256)",
+  "function symbol() view returns (string)",
+]);
+
+/** Why a position cannot be filled, in the order the VM checks. */
+export type PositionBlocker =
+  | "none"
+  | "settled"
+  | "capability-closed"
+  | "condition-unmet"
+  | "not-configured";
+
+export interface AquaPosition {
+  configured: boolean;
+  aqua: string;
+  router: string;
+  strategy: string;
+  votive: string;
+
+  /** Where our four instructions sit in the router's opcode table. */
+  opcodeBase: number;
+  opcodeCount: number;
+
+  /** The votive the position is priced off. */
+  votiveState: number;
+  principal: bigint;
+
+  capabilityOpen: boolean;
+  conditionMet: boolean;
+  fillable: boolean;
+  blocker: PositionBlocker;
+
+  /** What Aqua currently custodies for this strategy. */
+  makerTokenA: bigint;
+  makerTokenB: bigint;
+  takerTokenB: bigint;
+  treasuryTokenA: bigint;
+  symbolA: string;
+  symbolB: string;
+
+  explorer: { aqua: string; router: string; votive: string };
+}
+
+const TREASURY = "0x0000000000000000000000000000000000000FEE" as const;
+
+export async function readAquaPosition(): Promise<AquaPosition | null> {
+  const { aqua, router, tokenA, tokenB, taker, strategy, votive } = AQUA;
+  const registry = addr("NEXT_PUBLIC_WELL_REGISTRY");
+
+  if (!aqua || !router || !tokenA || !tokenB || !strategy || !votive || !registry) return null;
+
+  // Batched: a dozen small reads answered one at a time against a public endpoint
+  // is the difference between a page and a wait.
+  const pc = createPublicClient({
+    chain: BASE_SEPOLIA,
+    transport: http(undefined, { batch: { wait: 12 } }),
+    batch: { multicall: { wait: 12 } },
+  });
+
+  // Whoever shipped the strategy. Aqua keys custody on the maker, so without it
+  // the balance read is not "zero", it is a different strategy's.
+  const maker = addr("NEXT_PUBLIC_AQUA_MAKER");
+
+  const [intent, state, principal, base, count, symA, symB] = await Promise.all([
+    pc.readContract({ address: votive, abi: votiveAbi, functionName: "intent" }).catch(() => null),
+    pc.readContract({ address: votive, abi: votiveAbi, functionName: "state" }).catch(() => 0),
+    pc.readContract({ address: votive, abi: votiveAbi, functionName: "principal" }).catch(() => 0n),
+    pc
+      .readContract({ address: router, abi: routerAbi, functionName: "votiveOpcodeBase" })
+      .catch(() => 0n),
+    pc
+      .readContract({ address: router, abi: routerAbi, functionName: "VOTIVE_OPCODE_COUNT" })
+      .catch(() => 0n),
+    pc.readContract({ address: tokenA, abi: erc20, functionName: "symbol" }).catch(() => "A"),
+    pc.readContract({ address: tokenB, abi: erc20, functionName: "symbol" }).catch(() => "B"),
+  ]);
+
+  const i = intent as { capabilityId: `0x${string}`; conditionHash: `0x${string}` } | null;
+
+  const [capabilityOpen, conditionMet, balances, takerB, treasuryA] = await Promise.all([
+    i
+      ? pc
+          .readContract({
+            address: registry,
+            abi: registryAbi,
+            functionName: "isCapabilityOpen",
+            args: [i.capabilityId],
+          })
+          .catch(() => false)
+      : Promise.resolve(false),
+    i
+      ? pc
+          .readContract({
+            address: registry,
+            abi: registryAbi,
+            functionName: "isConditionMet",
+            args: [votive, i.conditionHash],
+          })
+          .catch(() => false)
+      : Promise.resolve(false),
+    maker
+      ? pc
+          .readContract({
+            address: aqua,
+            abi: aquaAbi,
+            functionName: "safeBalances",
+            args: [maker, router, strategy, tokenA, tokenB],
+          })
+          .catch(() => [0n, 0n] as const)
+      : Promise.resolve([0n, 0n] as const),
+    taker
+      ? pc
+          .readContract({ address: tokenB, abi: erc20, functionName: "balanceOf", args: [taker] })
+          .catch(() => 0n)
+      : Promise.resolve(0n),
+    pc
+      .readContract({ address: tokenA, abi: erc20, functionName: "balanceOf", args: [TREASURY] })
+      .catch(() => 0n),
+  ]);
+
+  const s = Number(state);
+  const live = s >= 1 && s <= 2;
+
+  // The order matters and mirrors the program: the lifecycle gate runs first,
+  // then the capability, then the condition. Reporting them in a different order
+  // would tell an operator to fix the wrong thing.
+  const blocker: PositionBlocker = !live
+    ? "settled"
+    : !capabilityOpen
+      ? "capability-closed"
+      : !conditionMet
+        ? "condition-unmet"
+        : "none";
+
+  return {
+    configured: true,
+    aqua,
+    router,
+    strategy,
+    votive,
+    opcodeBase: Number(base),
+    opcodeCount: Number(count),
+    votiveState: s,
+    principal: principal as bigint,
+    capabilityOpen: capabilityOpen as boolean,
+    conditionMet: conditionMet as boolean,
+    fillable: blocker === "none",
+    blocker,
+    makerTokenA: (balances as readonly bigint[])[0] ?? 0n,
+    makerTokenB: (balances as readonly bigint[])[1] ?? 0n,
+    takerTokenB: takerB as bigint,
+    treasuryTokenA: treasuryA as bigint,
+    symbolA: symA as string,
+    symbolB: symB as string,
+    explorer: {
+      aqua: explorerAddress("base-sepolia", aqua),
+      router: explorerAddress("base-sepolia", router),
+      votive: explorerAddress("base-sepolia", votive),
+    },
+  };
+}
+
+export function explainBlocker(blocker: PositionBlocker): string {
+  switch (blocker) {
+    case "none":
+      return "Fillable now — both gates are open and the votive is still live.";
+    case "settled":
+      return "Not fillable: this votive has already settled, so its position is closed.";
+    case "capability-closed":
+      return "Not fillable: no model has demonstrated the capability this wish waits on. This is the point of the position — it cannot be taken until the frontier arrives.";
+    case "condition-unmet":
+      return "Not fillable: the frontier has arrived, but this particular wish has not been attested true yet.";
+    case "not-configured":
+      return "No Aqua position is configured for this deployment.";
+  }
+}
