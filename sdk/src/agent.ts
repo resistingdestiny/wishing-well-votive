@@ -14,6 +14,8 @@
 import type {HederaRail} from './rail.js';
 import {tinybarsToHbar} from './rail.js';
 import {type FetchLike, type SkillOutcome, payHbar, x402Buy} from './skills/pay.js';
+import {type ScreenOptions, screenWish} from './skills/screen.js';
+import type {StandingView} from './world/standing.js';
 
 // ------------------------------------------------------------------ tool shapes
 
@@ -74,6 +76,13 @@ export interface VotiveAgentConfig {
   bounty?: BountyClient;
   /** Defaults to global fetch. Injectable so x402 can be tested. */
   fetchImpl?: FetchLike;
+  /** Optional: an on-chain view of who backs this agent and what it may spend.
+   *  Without it the standing tool is not offered. */
+  standing?: StandingView;
+  /** The agent's own wallet address, needed to ask about its own standing. */
+  wallet?: string;
+  /** Optional model-backed classifier for wish screening. */
+  screen?: ScreenOptions;
 }
 
 export interface VotiveAgent {
@@ -146,6 +155,31 @@ const TOOLS: ToolDefinition[] = [
       + 'One call however many milestones it came from.',
     input_schema: {type: 'object', properties: {}, required: []},
   },
+  {
+    name: 'votive_screen_wish',
+    description:
+      'Read a wish before working on it and decide whether it may be worked on at all. '
+      + 'ALWAYS call this before claiming a bounty or spending anything on a wish. Refuses '
+      + 'wishes that ask for a person to be harmed, for a weapon of mass harm, for sexual '
+      + 'exploitation, or for somebody to be targeted. A refusal is final: do not claim the '
+      + 'work, do not spend on it, and report it.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        text: {type: 'string', description: 'The full wish text, as written by its founder'},
+      },
+      required: ['text'],
+    },
+  },
+  {
+    name: 'votive_my_standing',
+    description:
+      'Check who backs this agent and what it is currently allowed to spend from the shared '
+      + 'commons. Reports the assurance tier, whether the operator is barred, the standing '
+      + 'multiplier, and the allowance remaining this epoch. Call this before planning work '
+      + 'that costs money, so the plan fits what is actually available.',
+    input_schema: {type: 'object', properties: {}, required: []},
+  },
 ];
 
 export function createVotiveAgent(config: VotiveAgentConfig): VotiveAgent {
@@ -175,9 +209,16 @@ export function createVotiveAgent(config: VotiveAgentConfig): VotiveAgent {
     rail: config.rail,
 
     tools() {
-      // Hide the bounty tools when the agent has no way to perform them, rather
-      // than offering a model a tool that is guaranteed to fail.
-      return config.bounty ? TOOLS : TOOLS.filter((t) => !t.name.startsWith('votive_'));
+      // Hide tools the agent has no way to perform, rather than offering a model
+      // something guaranteed to fail. Screening is always offered: it needs
+      // nothing but the wish text, and it is the one tool that should never be
+      // missing from an agent that might be handed a harmful wish.
+      const needsBounty = new Set(['votive_claim_bounty', 'votive_withdraw_earnings']);
+      return TOOLS.filter((tool) => {
+        if (needsBounty.has(tool.name)) return Boolean(config.bounty);
+        if (tool.name === 'votive_my_standing') return Boolean(config.standing && config.wallet);
+        return true;
+      });
     },
 
     async call(tool, input) {
@@ -206,6 +247,55 @@ export function createVotiveAgent(config: VotiveAgentConfig): VotiveAgent {
                   ? `withdrew ${tinybarsToHbar(before)} ℏ of earnings`
                   : 'withdrew earnings',
               detail: {transactionHash},
+            };
+          }
+          case 'votive_screen_wish': {
+            const result = await screenWish(String(input.text ?? ''), config.screen ?? {});
+            // A refusal is reported as ok:false so a model treating a failed tool
+            // call as "stop and reconsider" does the right thing without having to
+            // read the payload.
+            return {
+              tool,
+              ok: result.verdict === 'clear',
+              summary:
+                result.verdict === 'clear'
+                  ? 'this wish may be worked on'
+                  : `refuse this wish — it ${result.reason}. Do not claim it or spend on it.`,
+              detail: result,
+            };
+          }
+          case 'votive_my_standing': {
+            if (!config.standing || !config.wallet) {
+              return {tool, ok: false, summary: 'this agent has no view of its own standing'};
+            }
+            const snapshot = await config.standing.snapshot(config.wallet);
+            if (!snapshot.humanId) {
+              return {
+                tool,
+                ok: false,
+                summary:
+                  'no verified human is registered behind this agent, so it cannot draw from '
+                  + 'the commons. Ask your operator to verify.',
+                detail: snapshot,
+              };
+            }
+            if (snapshot.barred) {
+              return {
+                tool,
+                ok: false,
+                summary: 'the operator behind this agent is barred. Stop; do not take on work.',
+                detail: snapshot,
+              };
+            }
+            const remaining = snapshot.remaining;
+            return {
+              tool,
+              ok: true,
+              summary:
+                `human-backed at tier ${snapshot.assurance}, standing `
+                + `${Number(snapshot.multiplierBps) / 100}% of base`
+                + (remaining === undefined ? '' : `, ${remaining} left to spend this epoch`),
+              detail: snapshot,
             };
           }
           default:
