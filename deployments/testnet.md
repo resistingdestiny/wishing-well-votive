@@ -80,3 +80,71 @@ RPC_URL=... PK=... FACTORY=0x... REGISTRY=0x... ./ops/live-test.sh
 ```
 
 Hedera needs `--legacy`; it does not price EIP-1559 transactions the way Base does.
+
+---
+
+# Human-backing layer — Base Sepolia
+
+Deployed 2026-07-25. Throwaway keys; nothing here custodies anything worth taking.
+
+| contract | address |
+|---|---|
+| `HumanBackingRegistry` | `0x46C1a6e212701724C1802211d09c0581B3d777C7` |
+| `StandingLedger` | `0xDD9F86CB8893BFc440B5FF9Ff79BA757AD6fd2d7` |
+| `AgentStandingAdapter` | `0x1F4b09a2d352eabCCFc5d1dCE4dDa89C28C7b52d` |
+| `CommonsPool` | `0xC5CA17f63bA972c98B05786e04B1e194ABF988FF` |
+| `HumanBackedAccessGate` | `0xc970BD5b09779D7d6bFD2F4B72B0A941319E32D2` |
+| `AgentBountyRail` (standing-gated) | `0x1F29dc489d501C095D2D85941098b3c7281fA3F8` |
+
+Reading an existing `AttestationRegistry` at
+`0x36f4751653FD7a21618ea57a732c19b6240410db`. Commons seeded with 0.02 ETH; base
+allowance 0.01 ETH per day; step-up off; minimum tier `Device`.
+
+## What was exercised on chain
+
+`ops/world-live-test.sh`, 17 checks, all passing against the addresses above.
+The ones worth naming:
+
+- two wallets attested to **one** operator share a single allowance — the second
+  wallet sees the first's spend and cannot overdraw the remainder;
+- a conduct report of `ViolenceAgainstPeople` / `Critical` bars the operator, and
+  in the same block both wallets lose admission and the commons closes on both;
+- a **brand-new wallet** attested to that barred operator is admitted nowhere and
+  draws nothing — a new keypair is not a new start;
+- their existing wallet **cannot be relabelled** onto a clean identifier: the
+  registry refuses a rebind without an explicit revoke first;
+- an unrelated operator keeps their full allowance throughout.
+
+## AgentBook, live
+
+`@worldcoin/agentkit-core` resolves against the canonical AgentBook deployment on
+World Chain. Verified from this repository: `createAgentBookVerifier().lookupHuman()`
+returns `null` for an address nobody has registered, which is the RPC round trip
+completing and the contract answering — not a swallowed error.
+
+## Two things that only showed up off a local chain
+
+**Reads lag their own writes.** A public endpoint serves `eth_call` from replicas
+behind the node that just returned a receipt, so an assertion made straight after
+a write routinely reads pre-write state. The harness polls rather than reading
+once. The same class of problem, in a different disguise, as the mirror-node lag
+recorded above for Hedera.
+
+**Nonces collide.** `eth_getTransactionCount` comes from a replica too, so two
+sends in quick succession from one key are rejected with `nonce too low`. Retried
+on that specific error, because it is a property of the endpoint rather than of
+anything under test.
+
+## Reproducing
+
+```bash
+forge script script/DeployWorld.s.sol:DeployWorld \
+  --rpc-url "$RPC_URL" --private-key "$PK" --broadcast --slow
+
+RPC_URL=... DEPLOYER_KEY=... \
+HUMAN_REGISTRY=0x... STANDING_LEDGER=0x... COMMONS_POOL=0x... ACCESS_GATE=0x... \
+./ops/world-live-test.sh
+```
+
+Agent wallets are derived per run and topped up for gas automatically, so the
+harness is safe to re-run against a chain that keeps its state.
