@@ -1,0 +1,37 @@
+{
+  "name": "@votive/agent-skills",
+  "version": "0.1.0",
+  "description": "Skills an agent working on Votive can use to move value on Hedera and get paid.",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "node --test --experimental-strip-types test/*.test.ts",
+    "pretest": "tsc -p tsconfig.json"
+  },
+  "peerDependencies": {
+    "@hashgraph/sdk": ">=2"
+  },
+  "peerDependenciesMeta": {
+    "@hashgraph/sdk": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "typescript": "5.9.2",
+    "@types/node": "22.15.3"
+  }
+}
