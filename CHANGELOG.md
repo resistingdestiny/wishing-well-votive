@@ -11,6 +11,11 @@ versions.
 
 ### Added
 
+- Hardening: an invariant suite checking ten properties against randomised
+  histories — segregation (no votive ever holds more than was sent to it), value
+  conservation, the fee ceilings, and agreement between the factory's live set and
+  each votive's own state. Plus a deployment script with no address written in it,
+  and a contract-size guard that fails the build rather than a testnet.
 - `ShareWithActive` — a third wish kind, for wishes meant for everyone still
   waiting. `fulfilBySharing` settles the fee schedule on chain and *then* records
   a Merkle allocation over the live set, weighted by what each votive had parked;
