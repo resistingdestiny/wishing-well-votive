@@ -96,7 +96,14 @@ export interface AquaPosition {
   fillable: boolean;
   blocker: PositionBlocker;
 
-  /** What Aqua currently custodies for this strategy. */
+  /**
+   * What the maker has committed to this strategy.
+   *
+   * Not a custodial balance. Aqua holds no tokens at all — `ship` writes an
+   * accounting entry and a fill does `safeTransferFrom(maker, taker, …)` against
+   * the maker's own allowance. Verified on chain: this strategy declares 146 VDA
+   * while the Aqua contract's own token balance is zero.
+   */
   makerTokenA: bigint;
   makerTokenB: bigint;
   takerTokenB: bigint;

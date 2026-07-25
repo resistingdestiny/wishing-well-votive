@@ -79,10 +79,12 @@ export function AquaPanel({ position }: { position: AquaPosition | null }) {
           </tr>
           <tr>
             <td>
-              In the Aqua vault for this strategy
+              Inventory committed to this strategy
               <br />
               <span className="dim" style={{ fontSize: 12 }}>
-                <code>safeBalances(maker, router, strategy, tokenA, tokenB)</code>
+                <code>safeBalances(maker, router, strategy, tokenA, tokenB)</code> —
+                an allowance-backed accounting entry, not a custodial balance. Aqua
+                holds no tokens; the maker keeps them and Aqua moves them on a fill.
               </span>
             </td>
             <td>
