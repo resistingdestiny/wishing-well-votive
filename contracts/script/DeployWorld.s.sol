@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-import {IAttestationRegistry} from "../src/interfaces/IAttestationRegistry.sol";
 import {AgentBountyRail} from "../src/bounties/AgentBountyRail.sol";
 import {HumanBackedAccessGate} from "../src/gates/HumanBackedAccessGate.sol";
+import {IAttestationRegistry} from "../src/interfaces/IAttestationRegistry.sol";
 import {AgentStandingAdapter} from "../src/world/AgentStandingAdapter.sol";
 import {AssuranceTiers} from "../src/world/AssuranceTiers.sol";
 import {CommonsPool} from "../src/world/CommonsPool.sol";
@@ -80,8 +80,7 @@ contract DeployWorld is Script {
         cfg.epoch = uint64(vm.envOr("VOTIVE_EPOCH", uint256(1 days)));
         cfg.baseAllowance = vm.envOr("VOTIVE_BASE_ALLOWANCE", uint256(0.1 ether));
         cfg.stepUp = vm.envOr("VOTIVE_STEP_UP", uint256(0));
-        cfg.minAssurance =
-            uint8(vm.envOr("VOTIVE_MIN_ASSURANCE", uint256(AssuranceTiers.DEVICE)));
+        cfg.minAssurance = uint8(vm.envOr("VOTIVE_MIN_ASSURANCE", uint256(AssuranceTiers.DEVICE)));
         cfg.seed = vm.envOr("VOTIVE_COMMONS_SEED", uint256(0));
     }
 
@@ -92,8 +91,7 @@ contract DeployWorld is Script {
 
         HumanBackingRegistry humanRegistry = new HumanBackingRegistry(cfg.owner, cfg.attestor);
         StandingLedger ledger = new StandingLedger(cfg.owner);
-        AgentStandingAdapter adapter =
-            new AgentStandingAdapter(cfg.owner, humanRegistry, ledger);
+        AgentStandingAdapter adapter = new AgentStandingAdapter(cfg.owner, humanRegistry, ledger);
         CommonsPool commons = new CommonsPool(
             cfg.owner,
             humanRegistry,
@@ -105,8 +103,7 @@ contract DeployWorld is Script {
         );
         HumanBackedAccessGate gate =
             new HumanBackedAccessGate(cfg.owner, humanRegistry, ledger, cfg.minAssurance);
-        AgentBountyRail rail =
-            new AgentBountyRail(IAttestationRegistry(cfg.attestations), adapter);
+        AgentBountyRail rail = new AgentBountyRail(IAttestationRegistry(cfg.attestations), adapter);
 
         // The permissions that make the parts one system. Only the owner can grant
         // them, so when the owner is somebody else these are reported rather than
