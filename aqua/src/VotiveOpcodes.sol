@@ -6,6 +6,7 @@ import {BPS, Fee} from "@1inch/swap-vm/instructions/Fee.sol";
 import {Context} from "@1inch/swap-vm/libs/VM.sol";
 import {ContextLib} from "@1inch/swap-vm/libs/VM.sol";
 
+import {IVotiveHumanBacking, IVotiveStanding} from "./interfaces/IAgentStandingReads.sol";
 import {IVotiveAttestations, IVotiveState} from "./interfaces/IVotiveReads.sol";
 
 /// @notice Packed-calldata parsers for the votive instructions, in the style of
@@ -18,6 +19,9 @@ library VotiveArgs {
     error ConditionGateArgs();
     error LifecycleGateArgs();
     error PerformanceFeeArgs();
+    error HumanGateArgs();
+    error StandingGateArgs();
+    error StandingBonusArgs();
 
     /// @dev [registry: 20][capabilityId: 32]
     function parseCapabilityGate(bytes calldata args)
@@ -46,6 +50,41 @@ library VotiveArgs {
     function parseLifecycleGate(bytes calldata args) internal pure returns (address votive) {
         bytes calldata a = args.slice(0, 20, LifecycleGateArgs.selector);
         votive = address(uint160(bytes20(a[0:20])));
+    }
+
+    /// @dev [backing: 20][minAssurance: 1]
+    function parseHumanGate(bytes calldata args)
+        internal
+        pure
+        returns (address backing, uint8 minAssurance)
+    {
+        bytes calldata a = args.slice(0, 21, HumanGateArgs.selector);
+        backing = address(uint160(bytes20(a[0:20])));
+        minAssurance = uint8(a[20]);
+    }
+
+    /// @dev [backing: 20][standing: 20][minMultiplierBps: 4]
+    function parseStandingGate(bytes calldata args)
+        internal
+        pure
+        returns (address backing, address standing, uint256 minMultiplierBps)
+    {
+        bytes calldata a = args.slice(0, 44, StandingGateArgs.selector);
+        backing = address(uint160(bytes20(a[0:20])));
+        standing = address(uint160(bytes20(a[20:40])));
+        minMultiplierBps = uint32(bytes4(a[40:44]));
+    }
+
+    /// @dev [backing: 20][standing: 20][maxBonusBps: 4]
+    function parseStandingBonus(bytes calldata args)
+        internal
+        pure
+        returns (address backing, address standing, uint256 maxBonusBps)
+    {
+        bytes calldata a = args.slice(0, 44, StandingBonusArgs.selector);
+        backing = address(uint160(bytes20(a[0:20])));
+        standing = address(uint160(bytes20(a[20:40])));
+        maxBonusBps = uint32(bytes4(a[40:44]));
     }
 
     /// @dev [threshold: 32][feeBps: 4][treasury: 20]
@@ -97,10 +136,18 @@ abstract contract VotiveOpcodes is Fee {
     error ConditionNotMet();
     error VotiveNotLive();
     error PerformanceFeeOutOfRange();
+    error FillerNotHumanBacked();
+    error FillerBelowAssurance();
+    error FillerBarred();
+    error FillerStandingTooLow();
+    error StandingBonusOutOfRange();
 
     /// @dev Lifecycle values at or above this have settled. Mirrors the protocol's
     ///      `VotiveState`: 0 Nascent, 1 Waiting, 2 Attempting, then terminal.
     uint8 private constant FIRST_TERMINAL_STATE = 3;
+    /// @dev The standing ledger's neutral point. Kept here rather than read so an
+    ///      instruction cannot be made to pay a bonus by moving somebody's parity.
+    uint256 private constant PARITY_BPS = 10_000;
 
     // ------------------------------------------------------------------- gates
 
@@ -135,6 +182,99 @@ abstract contract VotiveOpcodes is Fee {
     function _onlyVotiveLive(Context memory, bytes calldata args) internal view {
         address votive = VotiveArgs.parseLifecycleGate(args);
         require(IVotiveState(votive).state() < FIRST_TERMINAL_STATE, VotiveNotLive());
+    }
+
+    // ------------------------------------------------------- who may fill this
+
+    /// @notice Refuse a fill unless a verified human stands behind the filler.
+    ///
+    /// @dev The point of a wish is that somebody does the work. A position on a
+    ///      wish that anyone can take is a position on a *price*; a position only
+    ///      a human-backed agent can take is a position on the work actually being
+    ///      done by somebody who can be held to it.
+    ///
+    ///      Reads the same registry the rest of the protocol reads, so an operator
+    ///      barred for conduct is refused here without this instruction knowing
+    ///      anything about conduct.
+    /// @param args [backing: 20][minAssurance: 1]
+    function _onlyHumanBackedFiller(Context memory ctx, bytes calldata args) internal view {
+        (address backing, uint8 minAssurance) = VotiveArgs.parseHumanGate(args);
+        address filler = ctx.query.taker;
+
+        require(IVotiveHumanBacking(backing).humanOf(filler) != bytes32(0), FillerNotHumanBacked());
+        require(
+            IVotiveHumanBacking(backing).assuranceOf(filler) >= minAssurance, FillerBelowAssurance()
+        );
+    }
+
+    /// @notice Refuse a fill from an operator who is barred or in poor standing.
+    ///
+    /// @dev Barred is checked separately from the multiplier and reported with its
+    ///      own error, because they are different situations: one is "you have not
+    ///      earned this yet" and the other is "you are not welcome here". Folding
+    ///      them into one threshold would tell a suspended operator to go and
+    ///      deliver more work, which is not the remedy.
+    /// @param args [backing: 20][standing: 20][minMultiplierBps: 4]
+    function _onlyFillerInGoodStanding(Context memory ctx, bytes calldata args) internal view {
+        (address backing, address standing, uint256 minMultiplierBps) =
+            VotiveArgs.parseStandingGate(args);
+
+        bytes32 humanId = IVotiveHumanBacking(backing).humanOf(ctx.query.taker);
+        require(humanId != bytes32(0), FillerNotHumanBacked());
+        require(!IVotiveStanding(standing).isBarred(humanId), FillerBarred());
+        require(
+            IVotiveStanding(standing).multiplierBpsOf(humanId) >= minMultiplierBps,
+            FillerStandingTooLow()
+        );
+    }
+
+    /// @notice Pay a better-standing agent more for the same work.
+    ///
+    ///         This is the instruction that makes a wish a market rather than an
+    ///         auction. Two agents can fulfil the same wish; the one with the
+    ///         better record — who has delivered before, who wastes less, who has
+    ///         not been reported — takes more of it home. The founder's principal
+    ///         is unchanged either way; what moves is how much of the offered
+    ///         amount the filler receives.
+    ///
+    /// @dev Brackets the rest of the program the way the fee instructions do: let
+    ///      the curve settle the amounts first, then adjust. The bonus is a
+    ///      fraction of `maxBonusBps` scaled by how far above parity the operator
+    ///      stands, so parity earns nothing extra and the ceiling is reached only
+    ///      by an operator at the ledger's own maximum.
+    ///
+    ///      Bounded twice over: `maxBonusBps` cannot exceed 100%, and the bonus
+    ///      cannot exceed what the curve already computed. An instruction that
+    ///      could mint output would be a hole in the maker's inventory, not a
+    ///      reward.
+    /// @param args [backing: 20][standing: 20][maxBonusBps: 4]
+    function _fillerStandingBonusXD(Context memory ctx, bytes calldata args) internal {
+        (address backing, address standing, uint256 maxBonusBps) =
+            VotiveArgs.parseStandingBonus(args);
+        require(maxBonusBps <= BPS, StandingBonusOutOfRange());
+
+        ctx.runLoop();
+
+        bytes32 humanId = IVotiveHumanBacking(backing).humanOf(ctx.query.taker);
+        if (humanId == bytes32(0)) return;
+
+        uint256 multiplier = IVotiveStanding(standing).multiplierBpsOf(humanId);
+        // The ledger's parity is 10_000. Anything at or below it earns no bonus:
+        // this rewards a record, it does not subsidise the absence of one.
+        if (multiplier <= PARITY_BPS) return;
+
+        uint256 above = multiplier - PARITY_BPS;
+        if (above > PARITY_BPS) above = PARITY_BPS; // cap the scaling at 2x parity
+
+        uint256 bonus = (ctx.swap.amountOut * maxBonusBps * above) / (BPS * PARITY_BPS);
+        if (bonus == 0) return;
+
+        // Never hand out more than the maker actually offered.
+        uint256 headroom =
+            ctx.swap.balanceOut > ctx.swap.amountOut ? ctx.swap.balanceOut - ctx.swap.amountOut : 0;
+        if (bonus > headroom) bonus = headroom;
+
+        ctx.swap.amountOut += bonus;
     }
 
     // --------------------------------------------------------- performance fee

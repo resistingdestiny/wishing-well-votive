@@ -147,9 +147,10 @@ test.describe("the Aqua position", () => {
     await expect(heading).toContainText(/Base Sepolia/i);
 
     const body = page.locator("body");
-    // Four instructions appended to the official set — read from the router, so
-    // this fails if the opcode table ever shifted underneath us.
-    await expect(body).toContainText(/4 SwapVM instructions appended/i);
+    // Seven instructions appended to the official set — read from the router, so
+    // this fails if the opcode table ever shifted underneath us. It did shift once,
+    // when the filler gates and the standing bonus were added, and this caught it.
+    await expect(body).toContainText(/7 SwapVM instructions appended/i);
     await expect(body).toContainText(/index 33/);
 
     // The fee threshold is the votive's own principal, read from the votive.
@@ -165,5 +166,80 @@ test.describe("the Aqua position", () => {
     await expect(body).toContainText(/This wish attested true/i);
     // Whatever the answer, the page must commit to one rather than hedge.
     await expect(body).toContainText(/Fillable/i);
+  });
+});
+
+test("the Aqua vault balance is shown on the wish itself, not only on /live", async ({ page }) => {
+  const votive = process.env.NEXT_PUBLIC_AQUA_VOTIVE;
+  test.skip(!votive, "needs a shipped position");
+
+  await page.goto(`/wish/${votive}`);
+  const body = page.locator("body");
+
+  await expect(page.getByRole("heading", { name: /1inch Aqua/i })).toBeVisible();
+  // The custodied position — read from Aqua, and previously fetched and dropped
+  // on the floor rather than rendered.
+  await expect(body).toContainText(/Inventory committed to this strategy/i);
+  await expect(body).toContainText(/safeBalances/);
+  await expect(body).toContainText(/VDA/);
+  await expect(body).toContainText(/VDB/);
+});
+
+/**
+ * The founder's own controls, driven end to end against Base Sepolia.
+ *
+ * These send real transactions from the founder's wallet, so they run last and
+ * one at a time. What they prove is the thing a script cannot: that a founder can
+ * open and close their wish's position from the page, without a terminal.
+ */
+test.describe("a founder managing their wish's position", () => {
+  const FOUNDER_PK = process.env.BASE_SEPOLIA_PK as `0x${string}` | undefined;
+  const FOUNDER = process.env.BASE_SEPOLIA_ADDRESS as `0x${string}` | undefined;
+  const VOTIVE = process.env.NEXT_PUBLIC_AQUA_VOTIVE;
+
+  test.skip(!FOUNDER_PK || !FOUNDER || !VOTIVE, "needs the founder wallet and a votive");
+
+  test.beforeEach(async ({ page }) => {
+    await injectWallet(page, {
+      privateKey: FOUNDER_PK as `0x${string}`,
+      address: FOUNDER as `0x${string}`,
+      rpcUrl: RPC,
+      chainId: CHAIN_ID,
+    });
+  });
+
+  test("the founder sees controls that nobody else does", async ({ page }) => {
+    await page.goto(`/wish/${VOTIVE}`);
+
+    // One of the two must be offered: closing if a position is open, opening if
+    // not. Which one depends on chain state, and asserting either specifically
+    // would make this test depend on the order the suite happens to run in.
+    const control = page.getByRole("button", {
+      name: /Close the position|Offer this wish as a position/i,
+    });
+    await expect(control).toBeVisible({ timeout: 30_000 });
+  });
+
+  test("closing and reopening the position both work from the page", async ({ page }) => {
+    test.setTimeout(300_000);
+    await page.goto(`/wish/${VOTIVE}`);
+
+    const close = page.getByRole("button", { name: /Close the position/i });
+    if (await close.isVisible().catch(() => false)) {
+      await close.click();
+      await expect(page.locator("body")).toContainText(/allowance .* back to zero/i, {
+        timeout: 180_000,
+      });
+    }
+
+    await page.reload();
+    const offerField = page.getByPlaceholder("60");
+    await expect(offerField).toBeVisible({ timeout: 30_000 });
+    await offerField.fill("40");
+
+    await page.getByRole("button", { name: /Offer this wish as a position/i }).click();
+    // The encoding guard runs before anything is sent, so a failure here would
+    // say so rather than silently shipping a position nobody could fill.
+    await expect(page.locator("body")).toContainText(/now quotable/i, { timeout: 180_000 });
   });
 });

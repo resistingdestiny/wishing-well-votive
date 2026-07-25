@@ -11,6 +11,7 @@
  * what this page says and what a fill would actually do cannot drift apart.
  */
 import { createPublicClient, http, parseAbi, type Chain } from "viem";
+import { prisma } from "@/lib/db";
 import { explorerAddress } from "@/lib/txLog";
 
 const BASE_SEPOLIA: Chain = {
@@ -57,6 +58,8 @@ const registryAbi = parseAbi([
 
 const votiveAbi = parseAbi([
   "function state() view returns (uint8)",
+  "function strategyHash() view returns (bytes32)",
+  "function offered() view returns (uint256)",
   "function principal() view returns (uint256)",
   "struct Intent { uint8 kind; address founder; address guardian; address beneficiary; address fallbackTo; bytes32 capabilityId; bytes32 conditionHash; bytes32 storyHash; uint256 expenseBudget; bool irrevocable; }",
   "function intent() view returns (Intent)",
@@ -77,6 +80,26 @@ export type PositionBlocker =
 
 export interface AquaPosition {
   configured: boolean;
+  /**
+   * Whether the votive itself says it has a position open.
+   *
+   * The contract, not our record of it. A row in the database says a position was
+   * shipped once; only `strategyHash()` says one is open now — and the two part
+   * company the moment anybody docks, which is exactly what happened the first
+   * time this was wired up: the page offered "close" on a position that had
+   * already been closed.
+   */
+  open: boolean;
+  /**
+   * Whether the chain actually answered.
+   *
+   * Every read here has a fallback, which is right — one missing symbol should
+   * not blank the panel. But when the *whole* set falls back, the zeros are not
+   * facts: they render as "0 instructions, 0 balance, already settled", which is
+   * a confident description of a position that is fine. A page whose only job is
+   * to be checkable must not do that, so a total failure is reported as one.
+   */
+  degraded: boolean;
   aqua: string;
   router: string;
   strategy: string;
@@ -95,7 +118,14 @@ export interface AquaPosition {
   fillable: boolean;
   blocker: PositionBlocker;
 
-  /** What Aqua currently custodies for this strategy. */
+  /**
+   * What the maker has committed to this strategy.
+   *
+   * Not a custodial balance. Aqua holds no tokens at all — `ship` writes an
+   * accounting entry and a fill does `safeTransferFrom(maker, taker, …)` against
+   * the maker's own allowance. Verified on chain: this strategy declares 146 VDA
+   * while the Aqua contract's own token balance is zero.
+   */
   makerTokenA: bigint;
   makerTokenB: bigint;
   takerTokenB: bigint;
@@ -106,13 +136,81 @@ export interface AquaPosition {
   explorer: { aqua: string; router: string; votive: string };
 }
 
+const ZERO_WORD = `0x${"0".repeat(64)}`;
+
 const TREASURY = "0x0000000000000000000000000000000000000FEE" as const;
 
-export async function readAquaPosition(): Promise<AquaPosition | null> {
-  const { aqua, router, tokenA, tokenB, taker, strategy, votive } = AQUA;
-  const registry = addr("NEXT_PUBLIC_WELL_REGISTRY");
+/** Where a position's identifying details come from. */
+interface StrategyRecord {
+  votive: `0x${string}`;
+  strategyHash: `0x${string}`;
+  aqua: `0x${string}`;
+  router: `0x${string}`;
+  maker: `0x${string}`;
+  taker?: `0x${string}`;
+  tokenA: `0x${string}`;
+  tokenB: `0x${string}`;
+}
 
-  if (!aqua || !router || !tokenA || !tokenB || !strategy || !votive || !registry) return null;
+/**
+ * Find the position shipped for a votive.
+ *
+ * The database first, because Aqua keys custody on (maker, vm, strategyHash,
+ * pair) and none of that is derivable from a votive's address — a protocol with
+ * more than one position cannot find the second one any other way. Environment
+ * variables are the fallback, and they can only ever describe one.
+ */
+export async function strategyFor(
+  votive?: `0x${string}`,
+): Promise<StrategyRecord | null> {
+  const row = await prisma.aquaStrategy
+    .findFirst({
+      ...(votive ? { where: { votive: votive.toLowerCase() } } : {}),
+      orderBy: { createdAt: "desc" },
+    })
+    .catch(() => null);
+
+  if (row) {
+    return {
+      votive: row.votive as `0x${string}`,
+      strategyHash: row.strategyHash as `0x${string}`,
+      aqua: row.aqua as `0x${string}`,
+      router: row.router as `0x${string}`,
+      maker: row.maker as `0x${string}`,
+      ...(row.taker ? { taker: row.taker as `0x${string}` } : {}),
+      tokenA: row.tokenA as `0x${string}`,
+      tokenB: row.tokenB as `0x${string}`,
+    };
+  }
+
+  const maker = addr("NEXT_PUBLIC_AQUA_MAKER");
+  if (!AQUA.aqua || !AQUA.router || !AQUA.tokenA || !AQUA.tokenB || !AQUA.strategy || !AQUA.votive || !maker) {
+    return null;
+  }
+  // Only answer from the environment when it describes the votive being asked
+  // about; otherwise a wish with no position would show somebody else's.
+  if (votive && votive.toLowerCase() !== AQUA.votive.toLowerCase()) return null;
+
+  return {
+    votive: AQUA.votive,
+    strategyHash: AQUA.strategy,
+    aqua: AQUA.aqua,
+    router: AQUA.router,
+    maker,
+    ...(AQUA.taker ? { taker: AQUA.taker } : {}),
+    tokenA: AQUA.tokenA,
+    tokenB: AQUA.tokenB,
+  };
+}
+
+export async function readAquaPosition(
+  forVotive?: `0x${string}`,
+): Promise<AquaPosition | null> {
+  const found = await strategyFor(forVotive);
+  const registry = addr("NEXT_PUBLIC_WELL_REGISTRY");
+  if (!found || !registry) return null;
+
+  const { aqua, router, tokenA, tokenB, taker, strategyHash: strategy, votive } = found;
 
   // Batched: a dozen small reads answered one at a time against a public endpoint
   // is the difference between a page and a wait.
@@ -122,11 +220,11 @@ export async function readAquaPosition(): Promise<AquaPosition | null> {
     batch: { multicall: { wait: 12 } },
   });
 
-  // Whoever shipped the strategy. Aqua keys custody on the maker, so without it
-  // the balance read is not "zero", it is a different strategy's.
-  const maker = addr("NEXT_PUBLIC_AQUA_MAKER");
+  // Whoever shipped the strategy. Aqua keys custody on the maker, so with the
+  // wrong one the balance read is not "zero", it is a different strategy's.
+  const maker = found.maker;
 
-  const [intent, state, principal, base, count, symA, symB] = await Promise.all([
+  const [intent, state, principal, base, count, symA, symB, liveHash] = await Promise.all([
     pc.readContract({ address: votive, abi: votiveAbi, functionName: "intent" }).catch(() => null),
     pc.readContract({ address: votive, abi: votiveAbi, functionName: "state" }).catch(() => 0),
     pc.readContract({ address: votive, abi: votiveAbi, functionName: "principal" }).catch(() => 0n),
@@ -138,7 +236,15 @@ export async function readAquaPosition(): Promise<AquaPosition | null> {
       .catch(() => 0n),
     pc.readContract({ address: tokenA, abi: erc20, functionName: "symbol" }).catch(() => "A"),
     pc.readContract({ address: tokenB, abi: erc20, functionName: "symbol" }).catch(() => "B"),
+    pc
+      .readContract({ address: votive, abi: votiveAbi, functionName: "strategyHash" })
+      .catch(() => ZERO_WORD),
   ]);
+
+  // The votive's own hash wins when it has one. The stored row is only ever the
+  // identifying details — which Aqua, which router, which pair — none of which a
+  // votive exposes.
+  const openHash = String(liveHash) !== ZERO_WORD ? (liveHash as `0x${string}`) : null;
 
   const i = intent as { capabilityId: `0x${string}`; conditionHash: `0x${string}` } | null;
 
@@ -186,6 +292,11 @@ export async function readAquaPosition(): Promise<AquaPosition | null> {
   const s = Number(state);
   const live = s >= 1 && s <= 2;
 
+  // The opcode base is the tell. It is a constant on a deployed router and can
+  // never legitimately be zero, so a zero means the call did not land rather than
+  // that the router has no instructions.
+  const degraded = Number(base) === 0;
+
   // The order matters and mirrors the program: the lifecycle gate runs first,
   // then the capability, then the condition. Reporting them in a different order
   // would tell an operator to fix the wrong thing.
@@ -199,9 +310,11 @@ export async function readAquaPosition(): Promise<AquaPosition | null> {
 
   return {
     configured: true,
+    open: openHash !== null,
+    degraded,
     aqua,
     router,
-    strategy,
+    strategy: openHash ?? strategy,
     votive,
     opcodeBase: Number(base),
     opcodeCount: Number(count),

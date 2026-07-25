@@ -3,7 +3,7 @@ pragma solidity 0.8.28;
 
 import {AttestationRegistry} from "../src/AttestationRegistry.sol";
 import {NativeVotive} from "../src/NativeVotive.sol";
-import {TokenVotive} from "../src/TokenVotive.sol";
+import {AquaVotive} from "../src/AquaVotive.sol";
 import {VotiveFactory} from "../src/VotiveFactory.sol";
 import {OpenAccessGate} from "../src/gates/OpenAccessGate.sol";
 import {Script} from "forge-std/Script.sol";
@@ -52,7 +52,11 @@ contract Deploy is Script {
         AttestationRegistry registry = new AttestationRegistry(owner, attestor);
         OpenAccessGate accessGate = new OpenAccessGate();
         NativeVotive nativeImplementation = new NativeVotive();
-        TokenVotive tokenImplementation = new TokenVotive();
+            // AquaVotive rather than TokenVotive: it is a strict superset — the same
+        // votive, plus the ability to quote its own principal through Aqua. Making
+        // it the implementation is what makes *every* token-funded wish a vault
+        // that can offer itself, rather than a privilege of specially-deployed ones.
+        AquaVotive tokenImplementation = new AquaVotive();
 
         VotiveFactory factory = new VotiveFactory(
             owner,
@@ -106,7 +110,7 @@ contract Deploy is Script {
         console.log("  VotiveFactory        %s", out.factory);
         console.log("  OpenAccessGate       %s", out.accessGate);
         console.log("  NativeVotive impl    %s", out.nativeImplementation);
-        console.log("  TokenVotive impl     %s", out.tokenImplementation);
+        console.log("  AquaVotive impl      %s", out.tokenImplementation);
         console.log("  ------------------------------------------------------");
         console.log("  owner                %s", owner);
         console.log("  treasury             %s", treasury);

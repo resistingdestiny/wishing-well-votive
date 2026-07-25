@@ -128,8 +128,8 @@ contract VotivePositionTest is AquaSwapVMTest {
         assertEq(opcodeBase, _opcodes().length, "the official table moved");
         assertEq(
             VotiveAquaRouter(payable(address(swapVM))).VOTIVE_OPCODE_COUNT(),
-            4,
-            "four votive instructions"
+            7,
+            "seven votive instructions"
         );
     }
 
