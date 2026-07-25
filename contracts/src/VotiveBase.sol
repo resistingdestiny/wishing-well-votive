@@ -8,7 +8,9 @@ import {IVotiveFactory} from "./interfaces/IVotiveFactory.sol";
 import {Initializable} from "@openzeppelin/contracts/proxy/utils/Initializable.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {EIP712} from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
+import {MerkleProof} from "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
 import {SignatureChecker} from "@openzeppelin/contracts/utils/cryptography/SignatureChecker.sol";
+import {BitMaps} from "@openzeppelin/contracts/utils/structs/BitMaps.sol";
 
 /// @title VotiveBase
 /// @notice One wish, one contract, its own money. Everything that decides where
@@ -30,16 +32,20 @@ import {SignatureChecker} from "@openzeppelin/contracts/utils/cryptography/Signa
 ///      implementation is inert (its initialisers are disabled in the
 ///      constructor) and never holds anything.
 ///
-///      Value leaves a votive through exactly four doors, and there is no fifth:
+///      Value leaves a votive through exactly five doors, and there is no sixth:
 ///
 ///        1. `settleStream` — accrued streaming fee, to the treasury.
 ///        2. settlement — fulfil, redirect or escheat, each paying the schedule
 ///           and then routing the residue per the intent.
-///        3. `claimDeferred` — a payout that was already accounted for but whose
+///        3. `claimShare` / `sweepUnclaimedShares` — a recipient's slice of a
+///           shared fulfilment, or whatever nobody came for, back to the founder.
+///        4. `claimDeferred` — a payout that was already accounted for but whose
 ///           push failed, pulled by the address it was owed to.
-///        4. `sweepStray` — value that arrived after the votive was already
+///        5. `sweepStray` — value that arrived after the votive was already
 ///           terminal, returned to the founder.
 abstract contract VotiveBase is Initializable, ReentrancyGuard, EIP712 {
+    using BitMaps for BitMaps.BitMap;
+
     // -------------------------------------------------------------- constants
 
     uint256 internal constant BPS = 10_000;
@@ -97,6 +103,30 @@ abstract contract VotiveBase is Initializable, ReentrancyGuard, EIP712 {
     ///         signature they have handed out but no longer stand behind.
     uint256 public redirectNonce;
 
+    // ------------------------------------------------- shared settlement state
+
+    /// @notice Merkle root over the recipients of a `ShareWithActive` fulfilment.
+    ///         Zero until one is posted, and only ever set on that route.
+    bytes32 public shareRoot;
+    /// @notice The pot set aside for claimants, pinned at fulfilment and never
+    ///         moved afterwards. Correcting an allocation changes who is owed
+    ///         what, never how much there is.
+    uint256 public shareTotal;
+    /// @notice How much of the pot has been collected so far.
+    uint256 public shareClaimed;
+    /// @notice The sum of leaf weights the posted root commits to.
+    uint256 public shareTotalWeight;
+    /// @notice The block whose live set the allocation describes, so anybody can
+    ///         reproduce it from chain history and check the executor's work.
+    uint64 public shareSnapshotBlock;
+    /// @notice Until here, the attestor may correct the allocation and nobody may
+    ///         claim against it.
+    uint64 public shareChallengeEndsAt;
+    /// @notice After here, whatever was never collected goes back to the founder.
+    uint64 public shareClaimEndsAt;
+
+    BitMaps.BitMap private _shareClaimed;
+
     // ----------------------------------------------------------------- events
 
     event Opened(
@@ -123,6 +153,12 @@ abstract contract VotiveBase is Initializable, ReentrancyGuard, EIP712 {
     event PayoutClaimed(address indexed to, uint256 amount);
     event SignaturesInvalidated(uint256 newNonce);
     event StraySwept(address indexed to, uint256 amount);
+    event SharesPosted(
+        bytes32 root, uint256 total, uint256 totalWeight, uint64 snapshotBlock, uint64 claimEndsAt
+    );
+    event SharesCorrected(bytes32 previousRoot, bytes32 newRoot, uint256 newTotalWeight);
+    event ShareClaimed(uint256 indexed index, address indexed account, uint256 amount, bool pushed);
+    event SharesSwept(address indexed to, uint256 amount);
 
     // ----------------------------------------------------------------- errors
 
@@ -146,6 +182,16 @@ abstract contract VotiveBase is Initializable, ReentrancyGuard, EIP712 {
     error NothingDeferred();
     error NothingToSweep();
     error TransferFailed();
+    error NotAttestor();
+    error ShareRequired();
+    error NotShared();
+    error NoSharesPosted();
+    error ChallengeWindowOpen();
+    error ChallengeWindowClosed();
+    error ClaimWindowOpen();
+    error ClaimWindowClosed();
+    error AlreadyClaimed();
+    error BadProof();
 
     // -------------------------------------------------------------- modifiers
 
@@ -233,6 +279,12 @@ abstract contract VotiveBase is Initializable, ReentrancyGuard, EIP712 {
         // A guardian's only power is to redirect. On an irrevocable votive that
         // power does not exist, so naming one would be theatre.
         if (intent_.irrevocable && intent_.guardian != address(0)) revert BadIntent();
+        // A shared wish has no single recipient, so a named one would be a field
+        // the protocol quietly ignores — which is exactly how people end up
+        // believing something about their money that is not true.
+        if (intent_.kind == VotiveKind.ShareWithActive && intent_.beneficiary != address(0)) {
+            revert BadIntent();
+        }
 
         // Nothing may be addressed at the votive itself: value pushed there is
         // value nobody can ever pull back out.
@@ -429,6 +481,7 @@ abstract contract VotiveBase is Initializable, ReentrancyGuard, EIP712 {
     ///         where the intent says it goes.
     function fulfil() external nonReentrant onlyExecutor {
         if (state != VotiveState.Attempting) revert WrongState();
+        if (_intent.kind == VotiveKind.ShareWithActive) revert ShareRequired();
         if (!registry.isConditionMet(address(this), _intent.conditionHash)) {
             revert ConditionNotMet();
         }
@@ -456,6 +509,143 @@ abstract contract VotiveBase is Initializable, ReentrancyGuard, EIP712 {
         address to = beneficiary();
         _pay(to, residue);
         emit Fulfilled(to, residue);
+    }
+
+    // ------------------------------------------------------- shared fulfilment
+
+    /// @notice Fulfil a `ShareWithActive` votive: the wish was for everyone still
+    ///         waiting, so instead of paying one address the executor posts a
+    ///         Merkle root over the votives that were open at `snapshotBlock`,
+    ///         weighted by what each had parked, and each recipient pulls its own
+    ///         slice.
+    ///
+    /// @dev The ordering here is the entire security argument, so it is worth
+    ///      being explicit about.
+    ///
+    ///      **Fees settle on chain, first.** The schedule is applied and paid out
+    ///      before the root is so much as recorded. Whatever the executor posts,
+    ///      it is an allocation of the fee-net residue and nothing else. A wrong
+    ///      root can therefore mis-address value; it cannot overcharge, cannot
+    ///      touch principal accounting, and cannot make the votive insolvent.
+    ///
+    ///      **The pot is fixed, the allocation is not.** `shareTotal` is pinned
+    ///      here and never moves. Inside the challenge window the attestor may
+    ///      correct the root and the total weight — the same key that says
+    ///      whether a condition is met is the one that says whether a snapshot
+    ///      was computed correctly — and no claim is possible until that window
+    ///      closes.
+    ///
+    ///      **Every claim is clamped.** A slice can never exceed what is left in
+    ///      the pot, so even a root asserting weights that do not sum to
+    ///      `totalWeight` cannot overdraw. The failure mode of a bad root is that
+    ///      somebody is short-changed and the remainder eventually goes back to
+    ///      the founder — never that the votive pays out money it does not have.
+    ///
+    /// @param root Merkle root; leaf = keccak256(keccak256(abi.encode(index, account, weight))).
+    /// @param totalWeight Sum of the leaf weights the root commits to.
+    /// @param snapshotBlock The block whose live set the root describes, so the
+    ///        allocation is reproducible by anyone from chain history.
+    function fulfilBySharing(bytes32 root, uint256 totalWeight, uint64 snapshotBlock)
+        external
+        nonReentrant
+        onlyExecutor
+    {
+        if (state != VotiveState.Attempting) revert WrongState();
+        if (_intent.kind != VotiveKind.ShareWithActive) revert NotShared();
+        if (!registry.isConditionMet(address(this), _intent.conditionHash)) {
+            revert ConditionNotMet();
+        }
+
+        (address treasury, uint256 platformDue, uint256 residue) = _computeSettlement(true);
+
+        state = VotiveState.Fulfilled;
+        factory.onTerminal();
+        _pay(treasury, platformDue);
+
+        if (root == bytes32(0) || totalWeight == 0 || residue == 0) {
+            // Nobody left to share with, or nothing left to share. The founder
+            // gets their own wish back rather than the value sitting in a pot
+            // with no claimants.
+            address to = _intent.founder;
+            _pay(to, residue);
+            emit Fulfilled(to, residue);
+            return;
+        }
+
+        shareRoot = root;
+        shareTotal = residue;
+        shareTotalWeight = totalWeight;
+        shareSnapshotBlock = snapshotBlock;
+        shareChallengeEndsAt = uint64(block.timestamp) + VotiveLimits.SHARE_CHALLENGE_WINDOW;
+        shareClaimEndsAt = uint64(block.timestamp) + VotiveLimits.SHARE_CLAIM_WINDOW;
+
+        emit SharesPosted(root, residue, totalWeight, snapshotBlock, shareClaimEndsAt);
+        emit Fulfilled(address(this), residue);
+    }
+
+    /// @notice Pull one recipient's slice of a posted allocation. Permissionless:
+    ///         the proof names the account, so anyone may push a claim through on
+    ///         somebody else's behalf, and the value still goes to them.
+    function claimShare(uint256 index, address account, uint256 weight, bytes32[] calldata proof)
+        external
+        nonReentrant
+    {
+        if (shareRoot == bytes32(0)) revert NoSharesPosted();
+        if (block.timestamp <= shareChallengeEndsAt) revert ChallengeWindowOpen();
+        if (block.timestamp > shareClaimEndsAt) revert ClaimWindowClosed();
+        if (_shareClaimed.get(index)) revert AlreadyClaimed();
+
+        bytes32 leaf = keccak256(bytes.concat(keccak256(abi.encode(index, account, weight))));
+        if (!MerkleProof.verify(proof, shareRoot, leaf)) revert BadProof();
+
+        _shareClaimed.set(index);
+
+        uint256 slice = (shareTotal * weight) / shareTotalWeight;
+        uint256 remaining = shareTotal - shareClaimed;
+        if (slice > remaining) slice = remaining;
+        shareClaimed += slice;
+
+        bool pushed = _pay(account, slice);
+        emit ShareClaimed(index, account, slice, pushed);
+    }
+
+    /// @notice Correct an allocation that was computed wrong, before any of it can
+    ///         be claimed. The pot is untouched; only who is owed what changes.
+    function correctShares(bytes32 newRoot, uint256 newTotalWeight) external {
+        if (msg.sender != registry.attestor()) revert NotAttestor();
+        if (shareRoot == bytes32(0)) revert NoSharesPosted();
+        if (block.timestamp > shareChallengeEndsAt) revert ChallengeWindowClosed();
+        if (newRoot == bytes32(0) || newTotalWeight == 0) revert BadProof();
+
+        emit SharesCorrected(shareRoot, newRoot, newTotalWeight);
+        shareRoot = newRoot;
+        shareTotalWeight = newTotalWeight;
+    }
+
+    /// @notice Once the claim window has closed, return whatever was never
+    ///         collected to the founder who put it up.
+    function sweepUnclaimedShares() external nonReentrant {
+        if (shareRoot == bytes32(0)) revert NoSharesPosted();
+        if (block.timestamp <= shareClaimEndsAt) revert ClaimWindowOpen();
+
+        uint256 leftover = shareTotal - shareClaimed;
+        if (leftover == 0) revert NothingToSweep();
+        shareClaimed = shareTotal;
+
+        address to = _intent.founder;
+        _pay(to, leftover);
+        emit SharesSwept(to, leftover);
+    }
+
+    /// @notice What is still held for claimants (zero once collected or swept).
+    function unclaimedShares() public view returns (uint256) {
+        if (shareRoot == bytes32(0)) return 0;
+        return shareTotal - shareClaimed;
+    }
+
+    /// @notice Whether a leaf index has already been collected.
+    function hasClaimedShare(uint256 index) external view returns (bool) {
+        return _shareClaimed.get(index);
     }
 
     // ---------------------------------------------------------------- redirect
@@ -570,7 +760,8 @@ abstract contract VotiveBase is Initializable, ReentrancyGuard, EIP712 {
 
     /// @notice Return value that arrived after the votive was already settled to
     ///         the founder. Anyone may call it; the destination is not theirs to
-    ///         choose. Deferred payouts are reserved and never swept.
+    ///         choose. Deferred payouts and an open share pot are both reserved,
+    ///         so this can never reach into money somebody is still owed.
     function sweepStray() external nonReentrant {
         if (
             state == VotiveState.Nascent || state == VotiveState.Waiting
@@ -578,7 +769,7 @@ abstract contract VotiveBase is Initializable, ReentrancyGuard, EIP712 {
         ) {
             revert WrongState();
         }
-        uint256 stray = _held() - deferredTotal;
+        uint256 stray = _held() - deferredTotal - unclaimedShares();
         if (stray == 0) revert NothingToSweep();
         address to = _intent.founder;
         _pay(to, stray);
