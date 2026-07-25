@@ -14,6 +14,7 @@ import {
 import { prisma } from "@/lib/db";
 import { readAquaPosition } from "@/lib/aquaPosition";
 import { AquaPanel } from "@/app/AquaPanel";
+import { AquaActions } from "./AquaActions";
 import { amount, shortAddr, days, wishTag, usdEquivalent } from "@/lib/format";
 import { OwnerActions } from "./OwnerActions";
 import { OnchainHistory } from "./OnchainHistory";
@@ -132,11 +133,16 @@ export default async function WishDetail({
       <p className="muted" style={{ fontSize: "0.85rem", marginBottom: "0.5rem" }}>
         <Link href="/explore">← All wishes</Link>
       </p>
-      {aquaPosition ? (
-        <div style={{ marginBottom: 20 }}>
-          <AquaPanel position={aquaPosition} />
-        </div>
-      ) : null}
+      <div style={{ marginBottom: 20 }}>
+        {aquaPosition ? <AquaPanel position={aquaPosition} /> : null}
+        {/* Shown whether or not a position exists: with one it offers closing,
+            without one it offers opening. Only the founder sees either. */}
+        <AquaActions
+          votive={cell.address}
+          founder={cell.wisher}
+          positionOpen={Boolean(aquaPosition?.open)}
+        />
+      </div>
       <div
         className={`wishHero${cell.state === 3 || cell.state === 6 ? " fulfilled" : ""}`}
         data-reveal

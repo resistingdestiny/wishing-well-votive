@@ -19,6 +19,8 @@ export type TxKind =
   | "commons-drawn"
   | "resource-granted"
   | "conduct-reported"
+  | "aqua-position-opened"
+  | "aqua-position-closed"
   | "bounty-posted"
   | "milestone-released"
   | "earnings-withdrawn";

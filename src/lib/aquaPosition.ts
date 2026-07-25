@@ -58,6 +58,8 @@ const registryAbi = parseAbi([
 
 const votiveAbi = parseAbi([
   "function state() view returns (uint8)",
+  "function strategyHash() view returns (bytes32)",
+  "function offered() view returns (uint256)",
   "function principal() view returns (uint256)",
   "struct Intent { uint8 kind; address founder; address guardian; address beneficiary; address fallbackTo; bytes32 capabilityId; bytes32 conditionHash; bytes32 storyHash; uint256 expenseBudget; bool irrevocable; }",
   "function intent() view returns (Intent)",
@@ -78,6 +80,16 @@ export type PositionBlocker =
 
 export interface AquaPosition {
   configured: boolean;
+  /**
+   * Whether the votive itself says it has a position open.
+   *
+   * The contract, not our record of it. A row in the database says a position was
+   * shipped once; only `strategyHash()` says one is open now — and the two part
+   * company the moment anybody docks, which is exactly what happened the first
+   * time this was wired up: the page offered "close" on a position that had
+   * already been closed.
+   */
+  open: boolean;
   /**
    * Whether the chain actually answered.
    *
@@ -123,6 +135,8 @@ export interface AquaPosition {
 
   explorer: { aqua: string; router: string; votive: string };
 }
+
+const ZERO_WORD = `0x${"0".repeat(64)}`;
 
 const TREASURY = "0x0000000000000000000000000000000000000FEE" as const;
 
@@ -210,7 +224,7 @@ export async function readAquaPosition(
   // wrong one the balance read is not "zero", it is a different strategy's.
   const maker = found.maker;
 
-  const [intent, state, principal, base, count, symA, symB] = await Promise.all([
+  const [intent, state, principal, base, count, symA, symB, liveHash] = await Promise.all([
     pc.readContract({ address: votive, abi: votiveAbi, functionName: "intent" }).catch(() => null),
     pc.readContract({ address: votive, abi: votiveAbi, functionName: "state" }).catch(() => 0),
     pc.readContract({ address: votive, abi: votiveAbi, functionName: "principal" }).catch(() => 0n),
@@ -222,7 +236,15 @@ export async function readAquaPosition(
       .catch(() => 0n),
     pc.readContract({ address: tokenA, abi: erc20, functionName: "symbol" }).catch(() => "A"),
     pc.readContract({ address: tokenB, abi: erc20, functionName: "symbol" }).catch(() => "B"),
+    pc
+      .readContract({ address: votive, abi: votiveAbi, functionName: "strategyHash" })
+      .catch(() => ZERO_WORD),
   ]);
+
+  // The votive's own hash wins when it has one. The stored row is only ever the
+  // identifying details — which Aqua, which router, which pair — none of which a
+  // votive exposes.
+  const openHash = String(liveHash) !== ZERO_WORD ? (liveHash as `0x${string}`) : null;
 
   const i = intent as { capabilityId: `0x${string}`; conditionHash: `0x${string}` } | null;
 
@@ -288,10 +310,11 @@ export async function readAquaPosition(
 
   return {
     configured: true,
+    open: openHash !== null,
     degraded,
     aqua,
     router,
-    strategy,
+    strategy: openHash ?? strategy,
     votive,
     opcodeBase: Number(base),
     opcodeCount: Number(count),

@@ -184,3 +184,62 @@ test("the Aqua vault balance is shown on the wish itself, not only on /live", as
   await expect(body).toContainText(/VDA/);
   await expect(body).toContainText(/VDB/);
 });
+
+/**
+ * The founder's own controls, driven end to end against Base Sepolia.
+ *
+ * These send real transactions from the founder's wallet, so they run last and
+ * one at a time. What they prove is the thing a script cannot: that a founder can
+ * open and close their wish's position from the page, without a terminal.
+ */
+test.describe("a founder managing their wish's position", () => {
+  const FOUNDER_PK = process.env.BASE_SEPOLIA_PK as `0x${string}` | undefined;
+  const FOUNDER = process.env.BASE_SEPOLIA_ADDRESS as `0x${string}` | undefined;
+  const VOTIVE = process.env.NEXT_PUBLIC_AQUA_VOTIVE;
+
+  test.skip(!FOUNDER_PK || !FOUNDER || !VOTIVE, "needs the founder wallet and a votive");
+
+  test.beforeEach(async ({ page }) => {
+    await injectWallet(page, {
+      privateKey: FOUNDER_PK as `0x${string}`,
+      address: FOUNDER as `0x${string}`,
+      rpcUrl: RPC,
+      chainId: CHAIN_ID,
+    });
+  });
+
+  test("the founder sees controls that nobody else does", async ({ page }) => {
+    await page.goto(`/wish/${VOTIVE}`);
+
+    // One of the two must be offered: closing if a position is open, opening if
+    // not. Which one depends on chain state, and asserting either specifically
+    // would make this test depend on the order the suite happens to run in.
+    const control = page.getByRole("button", {
+      name: /Close the position|Offer this wish as a position/i,
+    });
+    await expect(control).toBeVisible({ timeout: 30_000 });
+  });
+
+  test("closing and reopening the position both work from the page", async ({ page }) => {
+    test.setTimeout(300_000);
+    await page.goto(`/wish/${VOTIVE}`);
+
+    const close = page.getByRole("button", { name: /Close the position/i });
+    if (await close.isVisible().catch(() => false)) {
+      await close.click();
+      await expect(page.locator("body")).toContainText(/allowance .* back to zero/i, {
+        timeout: 180_000,
+      });
+    }
+
+    await page.reload();
+    const offerField = page.getByPlaceholder("60");
+    await expect(offerField).toBeVisible({ timeout: 30_000 });
+    await offerField.fill("40");
+
+    await page.getByRole("button", { name: /Offer this wish as a position/i }).click();
+    // The encoding guard runs before anything is sent, so a failure here would
+    // say so rather than silently shipping a position nobody could fill.
+    await expect(page.locator("body")).toContainText(/now quotable/i, { timeout: 180_000 });
+  });
+});

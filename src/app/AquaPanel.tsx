@@ -47,6 +47,13 @@ export function AquaPanel({ position }: { position: AquaPosition | null }) {
         the Aqua SDK encodes runs here byte-identically.
       </p>
 
+      {!position.open && !position.degraded ? (
+        <p className="note">
+          No position is open on this wish right now. The rows below describe the
+          last one that was — the votive says its strategy is closed, and the
+          votive is what decides.
+        </p>
+      ) : null}
       {position.degraded ? (
         <p className="note note-warn">
           Could not read the chain just now, so the numbers below are placeholders
