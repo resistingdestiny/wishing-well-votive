@@ -121,6 +121,8 @@ interface SdkTopicSubmit {
   execute(client: SdkClient): Promise<SdkSubmitted>;
 }
 
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
 export interface RailConfig {
   accountId: string;
   /** ECDSA or ED25519 private key, hex or DER. Never logged by this package. */
@@ -128,6 +130,11 @@ export interface RailConfig {
   network?: 'testnet' | 'mainnet' | 'previewnet';
   auditTopicId?: string;
   fetchImpl?: typeof fetch;
+  /** How many times to ask the mirror node before giving up. Default 8. */
+  mirrorAttempts?: number;
+  /** Base backoff between mirror attempts, multiplied by the attempt number.
+   *  Default 750 ms, so eight attempts span roughly twenty seconds. */
+  mirrorDelayMs?: number;
 }
 
 /**
@@ -141,6 +148,8 @@ export interface RailConfig {
 export async function createHederaRail(config: RailConfig): Promise<HederaRail> {
   const network = config.network ?? 'testnet';
   const fetchImpl = config.fetchImpl ?? fetch;
+  const mirrorAttempts = config.mirrorAttempts ?? 8;
+  const mirrorDelayMs = config.mirrorDelayMs ?? 750;
 
   const specifier = '@hashgraph/sdk';
   const sdk = (await import(specifier).catch(() => {
@@ -164,19 +173,54 @@ export async function createHederaRail(config: RailConfig): Promise<HederaRail> 
     : sdk.PrivateKey.fromStringDer(config.privateKey);
   client.setOperator(sdk.AccountId.fromString(config.accountId), key);
 
+  /**
+   * Ask the mirror node whether a transaction reached consensus, and keep asking
+   * for a short while if it says it has never heard of it.
+   *
+   * Mirror nodes are eventually consistent by design: they ingest from consensus
+   * nodes and lag them by a few seconds. A single immediate lookup therefore
+   * answers 404 for a transaction that has, in fact, just succeeded — and
+   * reporting failure for a payment that went through is the worst direction to
+   * be wrong in, because the agent would retry and pay twice. So a 404 is treated
+   * as "not yet" rather than as "no", up to a bounded number of attempts.
+   */
   async function confirm(transactionId: string): Promise<Confirmation> {
     const url = `${mirrorBase(network)}/transactions/${toMirrorId(transactionId)}`;
-    const response = await fetchImpl(url);
-    if (!response.ok) {
-      return {transactionId, consensusAt: null, result: `mirror ${response.status}`, confirmed: false};
+    let lastResult = 'NOT_FOUND';
+
+    for (let attempt = 0; attempt < mirrorAttempts; attempt++) {
+      if (attempt > 0) await sleep(mirrorDelayMs * attempt);
+
+      const response = await fetchImpl(url);
+      if (response.status === 404) {
+        lastResult = 'NOT_YET_INGESTED';
+        continue;
+      }
+      if (!response.ok) {
+        lastResult = `mirror ${response.status}`;
+        continue;
+      }
+
+      const body = (await response.json()) as {
+        consensus_timestamp?: string;
+        result?: string;
+        transactions?: {consensus_timestamp?: string; result?: string}[];
+      };
+      // The endpoint answers with a single object on some deployments and a
+      // one-element `transactions` array on others; accept both.
+      const record = body.transactions?.[0] ?? body;
+      if (record.result) {
+        return {
+          transactionId,
+          consensusAt: record.consensus_timestamp ?? null,
+          result: record.result,
+          confirmed: record.result === 'SUCCESS',
+        };
+      }
+      lastResult = 'UNKNOWN';
     }
-    const body = (await response.json()) as {consensus_timestamp?: string; result?: string};
-    return {
-      transactionId,
-      consensusAt: body.consensus_timestamp ?? null,
-      result: body.result ?? 'UNKNOWN',
-      confirmed: body.result === 'SUCCESS',
-    };
+
+    return {transactionId, consensusAt: null, result: lastResult, confirmed: false};
   }
 
   return {
