@@ -32,3 +32,12 @@ export type {
   PaymentRequirements,
   SkillOutcome,
 } from './skills/pay.js';
+
+export {createVotiveAgent, railCalldata} from './agent.js';
+export type {
+  BountyClient,
+  ToolCallResult,
+  ToolDefinition,
+  VotiveAgent,
+  VotiveAgentConfig,
+} from './agent.js';
