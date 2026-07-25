@@ -148,3 +148,65 @@ HUMAN_REGISTRY=0x... STANDING_LEDGER=0x... COMMONS_POOL=0x... ACCESS_GATE=0x... 
 
 Agent wallets are derived per run and topped up for gas automatically, so the
 harness is safe to re-run against a chain that keeps its state.
+
+---
+
+# 1inch Aqua — Base Sepolia
+
+Deployed 2026-07-25. The official `Aqua` contract is not on Base Sepolia, so it is
+deployed here from the package's own bytecode, unmodified.
+
+| contract | address |
+|---|---|
+| `Aqua` (official, unmodified) | `0x6f2e859894A17405ac74F7C75cfd2Bca2720C2f9` |
+| `VotiveAquaRouter` | `0xA83f98719Cf6FAc8FAB3B224a391Ee14c861E398` |
+| demo token A (VDA) | `0xFF1e3bb6FC6FAB6D26A616E889a81eF8581C6479` |
+| demo token B (VDB) | `0xd9cDa867f4fC35e36795ADf9290F21C8C464aCae` |
+| `MockTaker` | `0x4765837B11b9b07Efb87fC11aBbFD9bC27904aa6` |
+
+Votive opcode base **33** — the official table's length. Our four instructions sit
+immediately after it, so a program the Aqua SDK encodes against the stock router
+runs here byte-identically.
+
+## The position, priced off a real votive
+
+Strategy `0xf8f83f51…abc9d31e`, priced off votive
+`0xef624b1794c8a46da8a6610a94c25ff4b59c74cf` and attestation registry
+`0x7204F32BefE33b33d5E89c0E2E63D1eD8155558A`.
+
+Not mocks. The gates open and shut because of the deployed protocol's state, and
+the fee threshold is the votive's own `principal()` read from chain.
+
+**Shipped while the capability gate was shut** — the script reported
+`Not fillable: the frontier has not reached this wish yet`, which is the whole
+point of the instrument.
+
+**Then attested and filled:**
+
+| | |
+|---|---|
+| tokenA in | 50.0 VDA |
+| tokenB out | 66.666 VDB |
+| taker | 0 → 66.666 VDB |
+| treasury | 0 → **3.9984 VDA** |
+
+The fee checks out against the chain: principal `0.02 ETH` = `2e16`, so the gain
+is `50e18 − 2e16 = 49.98e18` and 8% of that is `3.9984e18`. Nothing was charged on
+the principal itself.
+
+## Reproducing
+
+```bash
+cd aqua
+forge script script/DeployAqua.s.sol:DeployAqua \
+  --rpc-url "$RPC" --private-key "$PK" --broadcast --slow
+
+AQUA=0x... AQUA_ROUTER=0x... AQUA_TOKEN_A=0x... AQUA_TOKEN_B=0x... AQUA_TAKER=0x... \
+VOTIVE_ADDRESS=0x... VOTIVE_ATTESTATIONS=0x... \
+VOTIVE_CAPABILITY=0x... VOTIVE_CONDITION=0x... \
+forge script script/ShipVotivePosition.s.sol:ShipVotivePosition \
+  --rpc-url "$RPC" --private-key "$PK" --broadcast --slow
+```
+
+The local-node demo (`script/DemoFill.s.sol`) still works and is faster for
+showing the whole arc in one run; this is the version with an address.
