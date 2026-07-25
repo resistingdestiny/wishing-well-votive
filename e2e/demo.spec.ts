@@ -50,13 +50,6 @@ test.describe("the pages a judge will be shown", () => {
     await expect(body).toContainText(/Commons allowance/i);
   });
 
-  test("Aqua is shown as a local run, not dressed up as a testnet one", async ({ page }) => {
-    await page.goto("/live");
-    // The honesty of this page is the reason it exists; assert it stays honest.
-    await expect(page.getByRole("heading", { name: /1inch Aqua/i })).toContainText(/local node/i);
-    await expect(page.locator("body")).toContainText("CapabilityNotOpen()");
-  });
-
   test("explore lists wishes with the protocol's own vocabulary", async ({ page }) => {
     await page.goto("/explore");
     const table = page.locator("table").first();
@@ -140,5 +133,37 @@ test.describe("with a wallet connected", () => {
     await expect(body).toContainText(/principal/i);
     await expect(body).toContainText(/parked/i);
     await expect(body).toContainText(/Waiting|Attempting|Fulfilled|Redirected|Escheated/);
+  });
+});
+
+test.describe("the Aqua position", () => {
+  test("is read from Base Sepolia, not written up from a script run", async ({ page }) => {
+    await page.goto("/live");
+
+    const heading = page.getByRole("heading", { name: /1inch Aqua/i });
+    await expect(heading).toBeVisible();
+    // Deployed, not local: the section says which chain it is on, and that claim
+    // is the one most worth holding to.
+    await expect(heading).toContainText(/Base Sepolia/i);
+
+    const body = page.locator("body");
+    // Four instructions appended to the official set — read from the router, so
+    // this fails if the opcode table ever shifted underneath us.
+    await expect(body).toContainText(/4 SwapVM instructions appended/i);
+    await expect(body).toContainText(/index 33/);
+
+    // The fee threshold is the votive's own principal, read from the votive.
+    await expect(body).toContainText(/Fee threshold/i);
+    await expect(body).toContainText(/own principal/i);
+  });
+
+  test("reports the gates the VM would actually check", async ({ page }) => {
+    await page.goto("/live");
+    const body = page.locator("body");
+
+    await expect(body).toContainText(/Capability demonstrated by some model/i);
+    await expect(body).toContainText(/This wish attested true/i);
+    // Whatever the answer, the page must commit to one rather than hedge.
+    await expect(body).toContainText(/Fillable/i);
   });
 });

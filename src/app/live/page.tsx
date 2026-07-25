@@ -3,6 +3,7 @@ import { SectionNav } from "@/app/SectionNav";
 import { PageHead } from "@/app/ui/PageHead";
 import { contractLinks, operatorStanding, votivePositions } from "@/lib/protocolState";
 import { recentTxs, type RecordedTx, type TxTrack } from "@/lib/txLog";
+import { explainBlocker, readAquaPosition, type AquaPosition } from "@/lib/aquaPosition";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -43,10 +44,11 @@ const KINDS = ["Release on condition", "Real-world task", "Share with everyone w
 export default async function LivePage() {
   const demoWallet = process.env.DEMO_WALLET_ADDRESS as `0x${string}` | undefined;
 
-  const [txs, positions, standing] = await Promise.all([
+  const [txs, positions, standing, aqua] = await Promise.all([
     recentTxs(200).catch((): RecordedTx[] => []),
     votivePositions(50).catch(() => []),
     demoWallet ? operatorStanding(demoWallet).catch(() => null) : Promise.resolve(null),
+    readAquaPosition().catch(() => null),
   ]);
 
   const byTrack = (t: TxTrack) => txs.filter((x) => x.track === t);
@@ -230,7 +232,7 @@ export default async function LivePage() {
         );
       })}
 
-      <AquaSection />
+      <AquaSection position={aqua} />
 
       {/* ------------------------------------------------------- addresses */}
       <section style={{ marginBottom: 24 }}>
@@ -263,59 +265,114 @@ export default async function LivePage() {
 }
 
 /**
- * Aqua is shown differently, and the difference is stated rather than hidden.
+ * The Aqua position, read from the chain like everything else here.
  *
- * The official Aqua and SwapVM contracts are not deployed on Base Sepolia, so the
- * fill runs against a local node — which the track explicitly permits. Dressing a
- * local run up as a public testnet transaction would be the one dishonest thing
- * on a page whose entire purpose is that nothing here is dressed up.
+ * The official Aqua contract is not deployed on Base Sepolia, so we deployed it —
+ * the bytecode is the package's, unmodified — which means the position is a thing
+ * with an address that anyone can query rather than something that only exists
+ * inside a script run.
+ *
+ * The gates shown are read from the same attestation registry the VM reads. That
+ * is the whole claim of this integration: a position that cannot be filled until
+ * the frontier reaches the job the wish was opened for, and the page cannot say
+ * otherwise than the VM would.
  */
-function AquaSection() {
-  const steps: [string, string][] = [
-    ["A votive position is shipped to the official Aqua contract", "priced by our four SwapVM instructions"],
-    ["Filling it is refused while the capability gate is shut", "CapabilityNotOpen()"],
-    ["A model passes the check; the wish is attested true", "both gates open"],
-    ["The same fill succeeds and real ERC-20 balances move", "taker +66.67 tokenB · 16 transactions, all successful"],
-    ["The performance fee is carved from the surplus only", "treasury +1.6 tokenA — (50 − 30) × 8%, nothing on principal"],
-  ];
+function AquaSection({ position }: { position: AquaPosition | null }) {
+  if (!position) {
+    return (
+      <section style={{ marginBottom: 34 }}>
+        <h2>1inch Aqua</h2>
+        <p className="empty">
+          No Aqua position is configured for this deployment. Ship one with{" "}
+          <code>aqua/script/ShipVotivePosition.s.sol</code>.
+        </p>
+      </section>
+    );
+  }
+
+  const token = (v: bigint, symbol: string): string => {
+    const whole = v / 10n ** 18n;
+    const frac = ((v % 10n ** 18n) * 10_000n) / 10n ** 18n;
+    return `${whole}.${frac.toString().padStart(4, "0")} ${symbol}`;
+  };
 
   return (
     <section style={{ marginBottom: 34 }}>
       <h2>
         1inch Aqua{" "}
         <span className="dim" style={{ fontWeight: 400, fontSize: "0.75em" }}>
-          on a local node
+          on Base Sepolia
         </span>
       </h2>
       <p className="dim" style={{ fontSize: 13, marginTop: 0 }}>
-        The official <code>Aqua</code> and <code>SwapVM</code> contracts are
-        deployed by the demo script itself, so the whole run reproduces from a
-        clean node in one command.
+        A wish as a position somebody else can take the other side of. Priced by{" "}
+        {position.opcodeCount} SwapVM instructions appended to the official set at
+        index {position.opcodeBase} — nothing official is replaced, so a program
+        the Aqua SDK encodes runs here byte-identically.
       </p>
+
+      <p className={position.fillable ? "note" : "note note-warn"}>
+        {explainBlocker(position.blocker)}
+      </p>
+
       <table className="grid">
-        <thead>
-          <tr>
-            <th>What happens</th>
-            <th>Result</th>
-          </tr>
-        </thead>
         <tbody>
-          {steps.map(([what, result]) => (
-            <tr key={what}>
-              <td>{what}</td>
-              <td className="dim">
-                <code style={{ fontSize: 12 }}>{result}</code>
-              </td>
-            </tr>
-          ))}
+          <tr>
+            <td>Priced off</td>
+            <td>
+              <a href={position.explorer.votive} target="_blank" rel="noreferrer">
+                <code>{position.votive}</code>
+              </a>
+            </td>
+          </tr>
+          <tr>
+            <td>Fee threshold (the votive&rsquo;s own principal)</td>
+            <td>{token(position.principal, "ETH")}</td>
+          </tr>
+          <tr>
+            <td>Capability demonstrated by some model</td>
+            <td>{position.capabilityOpen ? "yes" : "not yet"}</td>
+          </tr>
+          <tr>
+            <td>This wish attested true</td>
+            <td>{position.conditionMet ? "yes" : "not yet"}</td>
+          </tr>
+          <tr>
+            <td>Fillable</td>
+            <td>{position.fillable ? "yes" : "no"}</td>
+          </tr>
+          <tr>
+            <td>Taker holds</td>
+            <td>{token(position.takerTokenB, position.symbolB)}</td>
+          </tr>
+          <tr>
+            <td>Performance fee taken, on the surplus only</td>
+            <td>{token(position.treasuryTokenA, position.symbolA)}</td>
+          </tr>
+          <tr>
+            <td>Aqua (official)</td>
+            <td>
+              <a href={position.explorer.aqua} target="_blank" rel="noreferrer">
+                <code>{position.aqua}</code>
+              </a>
+            </td>
+          </tr>
+          <tr>
+            <td>VotiveAquaRouter</td>
+            <td>
+              <a href={position.explorer.router} target="_blank" rel="noreferrer">
+                <code>{position.router}</code>
+              </a>
+            </td>
+          </tr>
+          <tr>
+            <td>Strategy</td>
+            <td>
+              <code style={{ fontSize: 12 }}>{position.strategy}</code>
+            </td>
+          </tr>
         </tbody>
       </table>
-      <p className="note" style={{ marginTop: 10 }}>
-        <code>
-          anvil &amp; cd aqua &amp;&amp; forge script script/DemoFill.s.sol:DemoFill
-          --rpc-url http://127.0.0.1:8545 --private-key $PK --broadcast
-        </code>
-      </p>
     </section>
   );
 }
