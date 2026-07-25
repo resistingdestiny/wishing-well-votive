@@ -210,3 +210,67 @@ forge script script/ShipVotivePosition.s.sol:ShipVotivePosition \
 
 The local-node demo (`script/DemoFill.s.sol`) still works and is faster for
 showing the whole arc in one run; this is the version with an address.
+
+---
+
+# The wish as an Aqua vault — Base Sepolia
+
+Redeployed 2026-07-25 with `AquaVotive` as the factory's token implementation, so
+every token-funded wish is a vault that can quote its own principal.
+
+| contract | address |
+|---|---|
+| `VotiveFactory` | `0xcFE375Ad8d5aD9E4BDb47937D7f2a90Af3BD90d4` |
+| `AttestationRegistry` | `0x3394782e0fd7C43519417F70dc80F1F82b513d04` |
+| `AquaVotive` (token implementation) | `0x906d7e631709b368c44d88e73D8Cee32E3B613E2` |
+| `HumanBackingRegistry` | `0xcFc7c7F7D5d0F42233cfFE6Ec0FDB7aDF2c093ad` |
+| `StandingLedger` | `0xC42b36D39BAC7f42d62Ec1c6827f2687d724b59f` |
+| `CommonsPool` | `0x792f6E552363A7110FB9495D2B754868D742eB97` |
+| `ResourceRegistry` | `0x379c25Ec56984D93b22A87a74EB8418200b99d38` |
+| `HumanBackedAccessGate` | `0xeC0129807b8650f2f582Bd484b592f8376e6fa37` |
+| `Aqua` (official, unmodified) | `0x2510F1971364a8403C2F7C13DF6266363154c6f1` |
+| `VotiveAquaRouter` (7 instructions) | `0x8C3389E1567BB877D01b24A87fe291f60C911CF1` |
+
+## A wish that shipped its own principal
+
+Votive `0x37a1fd87E9CA9e01723CcFC0A430b7E5D71f75ee`, opened through the factory
+with **100 VDA**, offered **60** of that to strategy
+`0x00fda26c…4190fb7a`.
+
+Checked on chain afterwards:
+
+| | |
+|---|---|
+| the votive still holds | **100 VDA** — the principal did not move |
+| allowance to Aqua | **exactly 60**, not infinite |
+| Aqua's own balance of the token | **0** — it custodies nothing |
+
+That is the whole design in three numbers. Shipping says what the money is
+available for; it does not move it. The allowance is the risk and the program is
+the defence.
+
+## The program
+
+Seven instructions, appended to the official set at index 33:
+
+| # | instruction | refuses when |
+|---|---|---|
+| 0 | `onlyCapabilityOpen` | no model has demonstrated the capability |
+| 1 | `onlyConditionMet` | this wish is not attested true |
+| 2 | `onlyVotiveLive` | the wish has already settled |
+| 3 | `votivePerformanceFee` | — carves the fee from surplus only |
+| 4 | `onlyHumanBackedFiller` | the filler has no verified human behind it |
+| 5 | `onlyFillerInGoodStanding` | that operator is barred or below the bar |
+| 6 | `fillerStandingBonus` | — pays a better record more for the same work |
+
+Instructions 4–6 are the cross-integration: an operator barred for asking that
+somebody be hurt cannot fill any wish, and neither instruction knows anything
+about conduct — it reads the same ledger the rest of the protocol reads.
+
+## One thing worth knowing
+
+The RPC endpoint matters. `sepolia.base.org` answers `over rate limit` when a
+page reads a votive and its position together, and the failure surfaces as a
+panel confidently describing a position that is fine. Use
+`base-sepolia-rpc.publicnode.com`, which the project's `.env.example` already
+suggested.
