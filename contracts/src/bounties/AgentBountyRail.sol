@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
+import {IAgentStanding} from "../interfaces/IAgentStanding.sol";
 import {IAttestationRegistry} from "../interfaces/IAttestationRegistry.sol";
 
 /// @title AgentBountyRail
@@ -143,13 +144,25 @@ contract AgentBountyRail {
     error LifetimeTooShort();
     error NothingCredited();
     error TransferFailed();
+    error NotInGoodStanding();
 
     /// @dev Each milestone may only pay once, keyed by (bounty, milestone).
     mapping(uint256 id => mapping(bytes32 milestoneHash => bool)) public milestoneReleased;
 
-    constructor(IAttestationRegistry registry_) {
+    /// @notice Optional standing gate. Zero leaves the rail exactly as it was:
+    ///         open to any registered agent whose capability is attested.
+    ///
+    /// @dev Immutable rather than settable, and the rail has no owner to set it
+    ///      with. A rail holding other people's escrow should not have an
+    ///      administrator who can change who is allowed to be paid from it
+    ///      afterwards; a deployment either gates from the start or it does not, and
+    ///      which one it is stays legible from the constructor arguments forever.
+    IAgentStanding public immutable standing;
+
+    constructor(IAttestationRegistry registry_, IAgentStanding standing_) {
         if (address(registry_) == address(0)) revert ZeroAddress();
         registry = registry_;
+        standing = standing_;
     }
 
     // ------------------------------------------------------------------ agents
@@ -213,6 +226,12 @@ contract AgentBountyRail {
         if (bounty.agent != address(0)) revert AlreadyClaimed();
         if (payoutOf[msg.sender] == address(0)) revert NotRegistered();
         if (!registry.isCapabilityOpen(bounty.capabilityId)) revert CapabilityNotOpen();
+        // Checked when work is taken on, not when it is paid for. An agent barred
+        // after it delivered has still delivered, and withholding money already
+        // earned would make the bar a fine rather than an exclusion.
+        if (address(standing) != address(0) && !standing.mayWork(msg.sender)) {
+            revert NotInGoodStanding();
+        }
 
         uint64 window = bounty.claimExpiresAt; // still the raw window until now
         bounty.agent = msg.sender;
@@ -232,9 +251,19 @@ contract AgentBountyRail {
             revert ClaimStillHeld();
         }
 
+        bool takenAway = msg.sender != agent;
+
         bounty.agent = address(0);
         bounty.claimExpiresAt = MIN_CLAIM_WINDOW;
         emit ClaimReleased(id, agent, msg.sender);
+
+        // Only a claim taken *off* an agent counts against it. Handing a task back
+        // yourself is the honest move when you cannot finish it, and charging for
+        // that would teach agents to sit on claims until the window ran out —
+        // which is the behaviour the window exists to discourage.
+        if (takenAway && address(standing) != address(0)) {
+            standing.noteFailure(agent);
+        }
     }
 
     // --------------------------------------------------------------- releasing
@@ -273,6 +302,13 @@ contract AgentBountyRail {
         if (bounty.paid == bounty.total) {
             bounty.closed = true;
             emit BountyClosed(id, bounty.paid, 0);
+        }
+
+        // Last, after every state write and every event. The adapter moves no value,
+        // but a rail that holds escrow should finish its own bookkeeping before it
+        // calls out to anything, whatever that thing claims to do today.
+        if (address(standing) != address(0)) {
+            standing.noteFulfilment(agent);
         }
     }
 

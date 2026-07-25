@@ -3,6 +3,7 @@ pragma solidity 0.8.28;
 
 import {AttestationRegistry} from "../src/AttestationRegistry.sol";
 import {AgentBountyRail} from "../src/bounties/AgentBountyRail.sol";
+import {IAgentStanding} from "../src/interfaces/IAgentStanding.sol";
 import {RejectingReceiver} from "./helpers/Recipients.sol";
 import {Test} from "forge-std/Test.sol";
 
@@ -31,7 +32,9 @@ contract AgentBountyRailTest is Test {
     function setUp() public {
         vm.warp(1_800_000_000);
         registry = new AttestationRegistry(owner, attestor);
-        rail = new AgentBountyRail(registry);
+        // No standing gate: this suite is about the escrow mechanics, and the rail
+        // ungated behaves exactly as it did before there was anything to gate on.
+        rail = new AgentBountyRail(registry, IAgentStanding(address(0)));
 
         vm.deal(funder, 100 ether);
         vm.prank(agent);
