@@ -95,12 +95,31 @@ contract TokenVotive is VotiveBase {
     /// @notice Return a token that is not this votive's funding asset to the
     ///         founder. Foreign assets are never part of the accounting, so this
     ///         cannot touch principal, offerings or the deferred ledger.
+    ///
+    /// @dev "Is this the funding asset" cannot be answered by comparing addresses,
+    ///      because a token can have more than one. Real tokens have shipped with a
+    ///      proxy and an implementation both live over a single balance store, or
+    ///      with a second façade contract; each is a different address reading and
+    ///      moving the same balances. An address comparison waves that through, and
+    ///      the result is a permissionless, fee-free withdrawal of the whole
+    ///      principal out of a `Waiting` votive — `recoverToken` is callable by
+    ///      anyone and pays the founder.
+    ///
+    ///      So the funding balance is measured on both sides of the transfer, and
+    ///      any movement in it fails the call. That holds whatever the alias is
+    ///      called and however many of them exist, which an allowlist of known-bad
+    ///      addresses never could.
     function recoverToken(IERC20 other) external nonReentrant {
         if (other == token) revert TokenIsTheFundingAsset();
+
+        uint256 fundingBefore = _held();
         uint256 balance = other.balanceOf(address(this));
         if (balance == 0) revert NothingToSweep();
+
         address to = _intent.founder;
         other.safeTransfer(to, balance);
+
+        if (_held() != fundingBefore) revert TokenIsTheFundingAsset();
         emit Recovered(address(other), to, balance);
     }
 
