@@ -23,10 +23,14 @@
     "pretest": "tsc -p tsconfig.json"
   },
   "peerDependencies": {
-    "@hashgraph/sdk": ">=2"
+    "@hashgraph/sdk": ">=2",
+    "@worldcoin/agentkit-core": ">=0.2"
   },
   "peerDependenciesMeta": {
     "@hashgraph/sdk": {
+      "optional": true
+    },
+    "@worldcoin/agentkit-core": {
       "optional": true
     }
   },

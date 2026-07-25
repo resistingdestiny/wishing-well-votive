@@ -255,3 +255,77 @@ test('an earned rate is still capped', async () => {
   }
   assert.equal(granted, 5);
 });
+
+// -------------------------------------------------------------- the attestor
+
+test('an attestation plan carries what would be written, and is not sent', async () => {
+  const {planAttestation, AssuranceTier} = await import('../dist/world/attestor.js');
+  const book = {async lookupHuman() { return 'worldid-token-for-alice'; }};
+
+  const plan = await planAttestation(WALLET, {
+    book,
+    assurance: AssuranceTier.Orb,
+    evidenceHash: `0x${'cd'.repeat(32)}`,
+  });
+
+  assert.ok(plan);
+  assert.equal(plan.humanId, 'worldid-token-for-alice', 'the raw identifier is kept for the log');
+  assert.match(plan.humanIdOnChain, /^0x[0-9a-f]{64}$/);
+  assert.notEqual(plan.humanIdOnChain, plan.humanId, 'the raw token went on-chain unhashed');
+  assert.ok(plan.calldata.startsWith(SELECTORS.attest));
+});
+
+test('a wallet AgentBook does not know produces no plan at all', async () => {
+  const {planAttestation, AssuranceTier} = await import('../dist/world/attestor.js');
+  const book = {async lookupHuman() { return null; }};
+
+  const plan = await planAttestation(WALLET, {
+    book,
+    assurance: AssuranceTier.Selfie,
+    evidenceHash: `0x${'00'.repeat(32)}`,
+  });
+  assert.equal(plan, null);
+});
+
+/// Two wallets of one human must map to the same on-chain word, or their standing
+/// and any bar against them silently splits in two.
+test('two wallets of one human resolve to the same on-chain identifier', async () => {
+  const {planAttestation, AssuranceTier} = await import('../dist/world/attestor.js');
+  const book = {async lookupHuman() { return 'one-and-the-same-human'; }};
+  const opts = {book, assurance: AssuranceTier.Selfie, evidenceHash: `0x${'11'.repeat(32)}`} as const;
+
+  const a = await planAttestation('0x00000000000000000000000000000000000000a1', opts);
+  const b = await planAttestation('0x00000000000000000000000000000000000000b2', opts);
+
+  assert.equal(a?.humanIdOnChain, b?.humanIdOnChain);
+});
+
+test('recording "no evidence" is refused rather than stored', async () => {
+  const {planAttestation, AssuranceTier} = await import('../dist/world/attestor.js');
+  const book = {async lookupHuman() { return 'someone'; }};
+
+  await assert.rejects(
+    planAttestation(WALLET, {book, assurance: AssuranceTier.None, evidenceHash: `0x${'00'.repeat(32)}`}),
+    /revoke instead/
+  );
+});
+
+/// A verification run that silently returns a shorter list than it was asked
+/// about looks like it succeeded while doing nothing.
+test('wallets nobody backs are reported, not dropped', async () => {
+  const {planAttestations, AssuranceTier} = await import('../dist/world/attestor.js');
+  const known = new Set(['0x00000000000000000000000000000000000000a1']);
+  const book = {
+    async lookupHuman(address: string) {
+      return known.has(address.toLowerCase()) ? 'a-human' : null;
+    },
+  };
+
+  const {planned, unbacked} = await planAttestations(
+    ['0x00000000000000000000000000000000000000a1', '0x00000000000000000000000000000000000000b2'],
+    {book, assurance: AssuranceTier.Device, evidenceHash: `0x${'22'.repeat(32)}`}
+  );
+
+  assert.equal(planned.length, 1);
+  assert.deepEqual(unbacked, ['0x00000000000000000000000000000000000000b2']);
+});
