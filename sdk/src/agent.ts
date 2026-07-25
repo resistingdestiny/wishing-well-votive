@@ -15,6 +15,7 @@ import type {HederaRail} from './rail.js';
 import {tinybarsToHbar} from './rail.js';
 import {type FetchLike, type SkillOutcome, payHbar, x402Buy} from './skills/pay.js';
 import {type ScreenOptions, screenWish} from './skills/screen.js';
+import type {ResourceCommons} from './world/resourceCommons.js';
 import type {StandingView} from './world/standing.js';
 
 // ------------------------------------------------------------------ tool shapes
@@ -79,6 +80,9 @@ export interface VotiveAgentConfig {
   /** Optional: an on-chain view of who backs this agent and what it may spend.
    *  Without it the standing tool is not offered. */
   standing?: StandingView;
+  /** Optional: shared resources that are not money — API keys, compute, datasets.
+   *  Without it the resource tools are not offered. */
+  resources?: ResourceCommons;
   /** The agent's own wallet address, needed to ask about its own standing. */
   wallet?: string;
   /** Optional model-backed classifier for wish screening. */
@@ -156,6 +160,31 @@ const TOOLS: ToolDefinition[] = [
     input_schema: {type: 'object', properties: {}, required: []},
   },
   {
+    name: 'votive_list_resources',
+    description:
+      'List the shared resources this agent could ask for — API keys, compute seats, '
+      + 'licensed datasets — and, for each, whether it is available to this agent right '
+      + 'now and why not otherwise. Costs nothing and consumes no quota, so call it while '
+      + 'planning rather than guessing what is available.',
+    input_schema: {type: 'object', properties: {}, required: []},
+  },
+  {
+    name: 'votive_request_resource',
+    description:
+      'Request access to one shared resource and receive the credential for it. The share '
+      + 'is metered per operator, not per agent, and is larger for an operator with a '
+      + 'better track record. Ask only for what the job needs: a use spent is gone until '
+      + 'the window refills. Treat the returned credential as a secret — never repeat it '
+      + 'in your output.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        resourceId: {type: 'string', description: 'The id from votive_list_resources'},
+      },
+      required: ['resourceId'],
+    },
+  },
+  {
     name: 'votive_screen_wish',
     description:
       'Read a wish before working on it and decide whether it may be worked on at all. '
@@ -214,8 +243,10 @@ export function createVotiveAgent(config: VotiveAgentConfig): VotiveAgent {
       // nothing but the wish text, and it is the one tool that should never be
       // missing from an agent that might be handed a harmful wish.
       const needsBounty = new Set(['votive_claim_bounty', 'votive_withdraw_earnings']);
+      const needsResources = new Set(['votive_list_resources', 'votive_request_resource']);
       return TOOLS.filter((tool) => {
         if (needsBounty.has(tool.name)) return Boolean(config.bounty);
+        if (needsResources.has(tool.name)) return Boolean(config.resources && config.wallet);
         if (tool.name === 'votive_my_standing') return Boolean(config.standing && config.wallet);
         return true;
       });
@@ -247,6 +278,39 @@ export function createVotiveAgent(config: VotiveAgentConfig): VotiveAgent {
                   ? `withdrew ${tinybarsToHbar(before)} ℏ of earnings`
                   : 'withdrew earnings',
               detail: {transactionHash},
+            };
+          }
+          case 'votive_list_resources': {
+            if (!config.resources || !config.wallet) {
+              return {tool, ok: false, summary: 'this agent has no shared resources configured'};
+            }
+            const survey = await config.resources.survey(config.wallet);
+            const open = survey.filter((s) => s.available).length;
+            return {
+              tool,
+              ok: true,
+              summary: `${open} of ${survey.length} shared resources are available to you`,
+              detail: {survey, catalogue: config.resources.catalogue()},
+            };
+          }
+          case 'votive_request_resource': {
+            if (!config.resources || !config.wallet) {
+              return {tool, ok: false, summary: 'this agent has no shared resources configured'};
+            }
+            const decision = await config.resources.request(
+              config.wallet,
+              String(input.resourceId ?? '')
+            );
+            if (!decision.granted) {
+              return {tool, ok: false, summary: decision.explanation, detail: decision};
+            }
+            return {
+              tool,
+              ok: true,
+              summary:
+                `access granted to ${decision.resourceId}; `
+                + `${decision.remaining} of ${decision.effectiveLimit} uses left this window`,
+              detail: decision,
             };
           }
           case 'votive_screen_wish': {
