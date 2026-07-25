@@ -12,7 +12,7 @@ import {
 } from "wagmi";
 import { useRouter } from "next/navigation";
 import { getAddress, isAddress, formatEther, parseEther, parseUnits, parseSignature } from "viem";
-import { cellAbi, erc20Abi } from "@/lib/chain";
+import { cellAbi, tokenVotiveAbi, erc20Abi } from "@/lib/chain";
 import { appChain } from "@/lib/wagmi";
 import { shortAddr } from "@/lib/format";
 
@@ -58,18 +58,18 @@ export function OwnerActions({ address }: { address: `0x${string}` }) {
   const router = useRouter();
 
   const stateRead = useReadContract({ address: cell, abi: cellAbi, functionName: "state" });
-  const schemaRead = useReadContract({ address: cell, abi: cellAbi, functionName: "schema" });
-  const timeoutsRead = useReadContract({ address: cell, abi: cellAbi, functionName: "timeouts" });
+  const schemaRead = useReadContract({ address: cell, abi: cellAbi, functionName: "intent" });
+  const timeoutsRead = useReadContract({ address: cell, abi: cellAbi, functionName: "deadlines" });
   const lastActivityRead = useReadContract({
     address: cell,
     abi: cellAbi,
-    functionName: "lastWisherActivity",
+    functionName: "lastFounderSignal",
   });
-  const nonceRead = useReadContract({ address: cell, abi: cellAbi, functionName: "amendNonce" });
+  const nonceRead = useReadContract({ address: cell, abi: cellAbi, functionName: "redirectNonce" });
   const owedRead = useReadContract({
     address: cell,
     abi: cellAbi,
-    functionName: "owed",
+    functionName: "deferred",
     args: connected ? [connected] : undefined,
     query: { enabled: !!connected },
   });
@@ -95,12 +95,12 @@ export function OwnerActions({ address }: { address: `0x${string}` }) {
   const distRootRead = useReadContract({
     address: cell,
     abi: cellAbi,
-    functionName: "distributionRoot",
+    functionName: "shareRoot",
   });
   const distChalRead = useReadContract({
     address: cell,
     abi: cellAbi,
-    functionName: "distributionChallengeDeadline",
+    functionName: "shareChallengeEndsAt",
   });
   const hasDistribution = !!distRootRead.data && distRootRead.data !== ZERO_ROOT;
   const [distLeaf, setDistLeaf] = useState<{
@@ -130,7 +130,7 @@ export function OwnerActions({ address }: { address: `0x${string}` }) {
   const claimedRead = useReadContract({
     address: cell,
     abi: cellAbi,
-    functionName: "isClaimed",
+    functionName: "hasClaimedShare",
     args: distLeaf ? [BigInt(distLeaf.index)] : undefined,
     query: { enabled: !!distLeaf },
   });
@@ -223,7 +223,7 @@ export function OwnerActions({ address }: { address: `0x${string}` }) {
       const hash = await writeContractAsync({
         address: cell,
         abi: cellAbi,
-        functionName: functionName as "ping",
+        functionName: functionName as "heartbeat",
         args: args as [],
       });
       setTxHash(hash);
@@ -305,8 +305,8 @@ export function OwnerActions({ address }: { address: `0x${string}` }) {
       await client.waitForTransactionReceipt({ hash: approveHash });
       const hash = await writeContractAsync({
         address: cell,
-        abi: cellAbi,
-        functionName: "topUpERC20",
+        abi: tokenVotiveAbi,
+        functionName: "topUp",
         args: [amt],
       });
       setTxHash(hash);

@@ -39,7 +39,7 @@ export async function POST(req: Request) {
   const isCell = (await publicClient().readContract({
     address: factory,
     abi: factoryAbi,
-    functionName: "isCell",
+    functionName: "isVotive",
     args: [cell],
   })) as boolean;
   if (!isCell) {

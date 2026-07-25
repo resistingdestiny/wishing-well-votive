@@ -7,7 +7,7 @@ import {
   type WalletClient,
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
-import { chainConfig, publicClient, cellAbi, factoryAbi } from "./chain";
+import { chainConfig, publicClient, cellAbi, factoryAbi, toIntent } from "./chain";
 import { agentDataDir } from "./ingest";
 import { loadProvidersConfig } from "@/core/config";
 import { buildProviders, type Providers } from "@/core/providers/registry";
@@ -91,8 +91,11 @@ class ChainClaimChain implements ClaimChain {
   }): Promise<{ ref: string }> {
     const client = publicClient();
     const hash = await this.wallet.writeContract({
-      address: args.cell, abi: cellAbi, functionName: "recordIdentityClaim",
-      args: [BigInt(args.index), args.descriptorHash, args.weight, args.proof, args.payoutAddr, args.rail],
+      // The protocol records a share claim by payout address; the descriptor and
+      // the rail it was claimed through are ours to keep, not the chain's, so they
+      // stay in the run log rather than being pushed on-chain as extra arguments.
+      address: args.cell, abi: cellAbi, functionName: "claimShare",
+      args: [BigInt(args.index), args.payoutAddr, args.weight, args.proof],
       account: this.cfg.executor, chain: this.wallet.chain,
     });
     await client.waitForTransactionReceipt({ hash });
@@ -146,11 +149,15 @@ export function getRails(): Rails {
       account: cfg.executor, chain: wallet.chain,
     });
     await client.waitForTransactionReceipt({ hash: approveHash });
-    const fullSchema = { ...schema, wisher: cfg.executor.address } as const;
-    const timeouts = { amendAfter: 0n, escheatAfter: 0n, attemptAfter: 0n, claimWindow: 0n } as const;
+    const intent = toIntent(schema, cfg.executor.address);
+    const deadlines = { guardianAfter: 0n, escheatAfter: 0n, attemptWindow: 0n } as const;
+    // Accept whatever the factory quotes; the caller here is the protocol's own
+    // executor funding on somebody's behalf, not a founder haggling over terms.
+    const maxTerms = { streamBps: 65535, performanceBps: 65535 } as const;
     const hash = await wallet.writeContract({
-      address: cfg.factory, abi: factoryAbi, functionName: "createWishERC20",
-      args: [fullSchema, timeouts, cfg.usdc, amountUsdc], account: cfg.executor, chain: wallet.chain,
+      address: cfg.factory, abi: factoryAbi, functionName: "openWithToken",
+      args: [intent, deadlines, maxTerms, cfg.usdc, amountUsdc],
+      account: cfg.executor, chain: wallet.chain,
     });
     const receipt = await client.waitForTransactionReceipt({ hash });
     const created = receipt.logs.find((l) => l.address.toLowerCase() === cfg.factory.toLowerCase());
