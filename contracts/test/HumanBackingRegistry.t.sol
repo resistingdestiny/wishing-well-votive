@@ -212,14 +212,15 @@ contract HumanBackingRegistryTest is Test {
     /// the denominator the commons trusts.
     function testFuzz_theWalletCountTracksWhatWasAttested(uint8 count) public {
         count = uint8(bound(count, 1, 32));
-        for (uint256 i = 0; i < count; i++) {
-            _attest(address(uint160(0x5000 + i)), alice, AssuranceTiers.SELFIE);
+        // A uint160 counter so the address arithmetic never narrows a wider type.
+        for (uint160 i = 0; i < count; i++) {
+            _attest(address(0x5000 + i), alice, AssuranceTiers.SELFIE);
         }
         assertEq(registry.walletCount(alice), count);
 
-        for (uint256 i = 0; i < count; i++) {
+        for (uint160 i = 0; i < count; i++) {
             vm.prank(attestor);
-            registry.revoke(address(uint160(0x5000 + i)));
+            registry.revoke(address(0x5000 + i));
         }
         assertEq(registry.walletCount(alice), 0);
     }
