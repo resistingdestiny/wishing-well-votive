@@ -12,26 +12,33 @@ import {
 
 const ZERO_ADDR = "0x0000000000000000000000000000000000000000" as const;
 
+/**
+ * The protocol's real factory.
+ *
+ * The names here are the contract's, not the UI's: a wish is a *votive*, its
+ * machine-readable form is an `Intent`, and opening one is `open`. The UI keeps
+ * its own vocabulary — this module is the one place the two meet, and translating
+ * once here is what keeps every page from having to know both.
+ */
 export const factoryAbi = parseAbi([
-  "function activeCells() view returns (address[])",
-  "function allCellsLength() view returns (uint256)",
-  "function allCells(uint256) view returns (address)",
-  "function isCell(address) view returns (bool)",
-  "function feeRecipient() view returns (address)",
+  "function liveVotives() view returns (address[])",
+  "function allVotivesLength() view returns (uint256)",
+  "function votiveAt(uint256) view returns (address)",
+  "function allVotives() view returns (address[])",
+  "function isVotive(address) view returns (bool)",
+  "function isLive(address) view returns (bool)",
+  "function treasury() view returns (address)",
   "function executor() view returns (address)",
-  "function positionRegistry() view returns (address)",
+  "function registry() view returns (address)",
+  "function accessGate() view returns (address)",
   "function allowedToken(address) view returns (bool)",
-  "struct StorySchema { uint8 kind; address wisher; address guardian; address beneficiary; bytes32 capabilityId; bytes32 conditionHash; bytes32 storyHash; uint256 actionBudget; bool isSealed; address fallbackBeneficiary; bytes32 beneficiariesRoot; }",
-  "struct Timeouts { uint64 amendAfter; uint64 escheatAfter; uint64 attemptAfter; uint64 claimWindow; }",
-  "function createWish(StorySchema schema, Timeouts timeoutOverrides) payable returns (address)",
-  "function createWishERC20(StorySchema schema, Timeouts timeoutOverrides, address token, uint256 amount) returns (address)",
-]);
-
-export const legacyFactoryAbi = parseAbi([
-  "struct StorySchema { uint8 kind; address wisher; address guardian; address beneficiary; bytes32 capabilityId; bytes32 conditionHash; bytes32 storyHash; uint256 actionBudget; bool isSealed; address fallbackBeneficiary; }",
-  "struct Timeouts { uint64 amendAfter; uint64 escheatAfter; uint64 attemptAfter; }",
-  "function createWish(StorySchema schema, Timeouts timeoutOverrides) payable returns (address)",
-  "function createWishERC20(StorySchema schema, Timeouts timeoutOverrides, address token, uint256 amount) returns (address)",
+  "function defaultDeadlines() view returns (uint64 guardianAfter, uint64 escheatAfter, uint64 attemptWindow)",
+  "function defaultTerms() view returns (uint16 streamBps, uint16 performanceBps)",
+  "struct Intent { uint8 kind; address founder; address guardian; address beneficiary; address fallbackTo; bytes32 capabilityId; bytes32 conditionHash; bytes32 storyHash; uint256 expenseBudget; bool irrevocable; }",
+  "struct Deadlines { uint64 guardianAfter; uint64 escheatAfter; uint64 attemptWindow; }",
+  "struct Terms { uint16 streamBps; uint16 performanceBps; }",
+  "function open(Intent intent, Deadlines deadlineOverrides, Terms maxTerms) payable returns (address)",
+  "function openWithToken(Intent intent, Deadlines deadlineOverrides, Terms maxTerms, address token, uint256 amount) returns (address)",
 ]);
 
 const FIAT_PROBE_ABI = parseAbi(["function allowedVault(address) view returns (bool)"]);
@@ -55,60 +62,80 @@ export async function factorySupportsFiatSchema(
   }
 }
 
+/** One votive. Same translation note as the factory above. */
 export const cellAbi = parseAbi([
   "function state() view returns (uint8)",
 
-  "struct StorySchema { uint8 kind; address wisher; address guardian; address beneficiary; bytes32 capabilityId; bytes32 conditionHash; bytes32 storyHash; uint256 actionBudget; bool isSealed; address fallbackBeneficiary; }",
-  "function schema() view returns (StorySchema)",
+  "struct Intent { uint8 kind; address founder; address guardian; address beneficiary; address fallbackTo; bytes32 capabilityId; bytes32 conditionHash; bytes32 storyHash; uint256 expenseBudget; bool irrevocable; }",
+  "function intent() view returns (Intent)",
   "function principal() view returns (uint256)",
   "function parked() view returns (uint256)",
-  "function uncollectedStreamFees() view returns (uint256)",
-  "function pendingStreamFees() view returns (uint256)",
-  "function extraProceeds() view returns (uint256)",
-  "function streamFeesAccrued() view returns (uint256)",
-  "function streamFeesCollected() view returns (uint256)",
-  "function perfFeeTaken() view returns (uint256)",
-  "function lastWisherActivity() view returns (uint64)",
+  "function offerings() view returns (uint256)",
+  "function unpaidStream() view returns (uint256)",
+  "function pendingStream() view returns (uint256)",
+  "function streamAccrued() view returns (uint256)",
+  "function streamPaid() view returns (uint256)",
+  "function performanceCharged() view returns (uint256)",
+  "function lastFounderSignal() view returns (uint64)",
+  "function lastAccrual() view returns (uint64)",
   "function attemptStartedAt() view returns (uint64)",
 
-  "function timeouts() view returns (uint64 amendAfter, uint64 escheatAfter, uint64 attemptAfter)",
-  "function owedTotal() view returns (uint256)",
-  "function amendNonce() view returns (uint256)",
-  "function owed(address) view returns (uint256)",
+  "function deadlines() view returns (uint64 guardianAfter, uint64 escheatAfter, uint64 attemptWindow)",
+  "function terms() view returns (uint16 streamBps, uint16 performanceBps)",
+  "function guardianOpensAt() view returns (uint256)",
+  "function escheatOpensAt() view returns (uint256)",
+  "function deferredTotal() view returns (uint256)",
+  "function deferred(address) view returns (uint256)",
+  "function redirectNonce() view returns (uint256)",
 
   "function asset() view returns (address)",
-  "function positioned() view returns (bool)",
-  "function payee() view returns (address)",
-  "function positionTokenId() view returns (uint256)",
-  "function distributionRoot() view returns (bytes32)",
-  "function distributionTotal() view returns (uint256)",
-  "function distributionClaimed() view returns (uint256)",
-  "function distributionChallengeDeadline() view returns (uint64)",
-  "function distributionClaimDeadline() view returns (uint64)",
-  "function isClaimed(uint256 index) view returns (bool)",
+  "function beneficiary() view returns (address)",
+  "function registry() view returns (address)",
+  "function factory() view returns (address)",
 
-  "function claimRoot() view returns (bytes32)",
-  "function claimTotal() view returns (uint256)",
-  "function claimClaimed() view returns (uint256)",
-  "function claimTotalWeight() view returns (uint256)",
-  "function claimUnclaimed() view returns (uint256)",
-  "function claimDeadline() view returns (uint64)",
-  "function isBeneficiaryClaimed(uint256 index) view returns (bool)",
+  // Sharing with the still-waiting — our ShareWithActive settlement.
+  "function shareRoot() view returns (bytes32)",
+  "function shareTotal() view returns (uint256)",
+  "function shareClaimed() view returns (uint256)",
+  "function shareTotalWeight() view returns (uint256)",
+  "function shareSnapshotBlock() view returns (uint64)",
+  "function shareChallengeEndsAt() view returns (uint64)",
+  "function shareClaimEndsAt() view returns (uint64)",
+  "function unclaimedShares() view returns (uint256)",
+  "function hasClaimedShare(uint256 index) view returns (bool)",
+  "function fulfilBySharing(bytes32 root, uint256 totalWeight, uint64 snapshotBlock)",
+  "function claimShare(uint256 index, address account, uint256 weight, bytes32[] proof)",
+  "function correctShares(bytes32 newRoot, uint256 newTotalWeight)",
+  "function sweepUnclaimedShares()",
 
-  "function fulfilToBeneficiaries(bytes32 merkleRoot, uint256 totalWeight)",
-  "function claimBeneficiary(uint256 index, address account, uint256 weight, bytes32[] proof)",
-  "function recordIdentityClaim(uint256 index, bytes32 descriptorHash, uint256 weight, bytes32[] proof, address payoutAddr, uint8 rail)",
-  "function closeExpiredClaim()",
-
-  "function ping()",
+  "function heartbeat()",
   "function topUp() payable",
-  "function topUpERC20(uint256 amount)",
-  "function amend(address payout)",
-  "function amendWithSig(address payout, uint256 deadline, uint8 v, bytes32 r, bytes32 s)",
-  "function invalidateAmendSignatures()",
-  "function claimOwed()",
-  "function claimDistribution(uint256 index, address account, uint256 weight, bytes32[] proof)",
+  "function accrue()",
+  "function settleStream()",
+  "function redirect(address to)",
+  "function redirectBySignature(address to, uint256 deadline, bytes signature)",
+  "function invalidateSignatures()",
+  "function claimDeferred()",
+  "function beginAttempt()",
+  "function endAttempt()",
+  "function fulfil()",
   "function escheat()",
+  "function sweepStray()",
+]);
+
+/**
+ * A token-funded votive.
+ *
+ * Kept apart from `cellAbi` because `topUp` differs between the two: the native
+ * one takes value and no arguments, the token one takes an amount and pulls it.
+ * Declaring both in one ABI would make `functionName: "topUp"` ambiguous at every
+ * call site, and viem resolves that ambiguity by argument count rather than by
+ * what the caller meant.
+ */
+export const tokenVotiveAbi = parseAbi([
+  "function topUp(uint256 amount)",
+  "function recoverToken(address other)",
+  "function recoverNative()",
 ]);
 
 export const erc20Abi = parseAbi([
@@ -130,12 +157,14 @@ export const erc4626Abi = parseAbi([
 ]);
 
 export const registryAbi = parseAbi([
-  "function capabilityPassed(bytes32) view returns (bool)",
-  "function wishCapability(address) view returns (bytes32)",
-  "function conditionMet(address cell, bytes32 conditionHash) view returns (bool)",
-  "function conditionBinding(bytes32) view returns (bytes32 resolverId, address impl, bytes params, bool bound)",
-  "function resolvers(bytes32) view returns (address)",
-  "function bindCondition(bytes32 conditionHash, bytes32 resolverId, bytes params)",
+  "function isCapabilityOpen(bytes32) view returns (bool)",
+  "function requiredCapability(address) view returns (bytes32)",
+  "function isConditionMet(address votive, bytes32 conditionHash) view returns (bool)",
+  "function demonstratedBy(bytes32) view returns (uint256)",
+  "function pioneer(bytes32) view returns (bytes32)",
+  "function attestor() view returns (address)",
+  "function attestCapability(bytes32 capabilityId, bytes32 modelId, bool verdict, bytes32 evidence)",
+  "function attestCondition(address votive, bytes32 conditionHash, bool verdict, bytes32 evidence)",
 ]);
 
 export const RESOLVER_KIND: Record<string, string> = {
@@ -144,21 +173,33 @@ export const RESOLVER_KIND: Record<string, string> = {
   [keccak256(toHex("erc20-received"))]: "ERC-20 received",
 };
 
+/**
+ * `VotiveState`, in the contract's order.
+ *
+ * The ordinals are what the chain returns, so this array is positional and must
+ * not be reordered or padded — index 4 is Redirected, not "Amended", and reading
+ * it as anything else mislabels a settled wish on every page that shows a status.
+ */
 export const WISH_STATES = [
-  "Created",
+  "Nascent",
   "Waiting",
   "Attempting",
   "Fulfilled",
-  "Amended",
+  "Redirected",
   "Escheated",
-  "Claimable",
-  "Closed",
 ] as const;
 
+/**
+ * `VotiveKind`, also positional.
+ *
+ * Worth stating because an earlier vocabulary had these in a different order:
+ * index 1 is the real-world task, index 2 is sharing with everyone still waiting.
+ * Swapping them would show a wish paying one person as one paying hundreds.
+ */
 export const WISH_KINDS = [
-  "Return on condition",
-  "Distribute to active wishers",
-  "Off-chain action (experimental)",
+  "Release on condition",
+  "Real-world task",
+  "Share with everyone still waiting",
 ] as const;
 
 export function chainConfig() {
@@ -240,6 +281,14 @@ function settled<T>(r: PromiseSettledResult<unknown>, d: T): T {
   return r.status === "fulfilled" ? (r.value as T) : d;
 }
 
+/**
+ * The UI's view of a wish's fixed terms.
+ *
+ * Field names are the UI's (`wisher`, `actionBudget`, `isSealed`) and are mapped
+ * from the contract's `Intent` (`founder`, `expenseBudget`, `irrevocable`) in one
+ * place, just below. Keeping the translation here rather than in the pages means
+ * a rename on either side is a single edit.
+ */
 interface SchemaShape {
   kind: number;
   wisher: `0x${string}`;
@@ -254,60 +303,69 @@ interface SchemaShape {
   beneficiariesRoot?: `0x${string}`;
 }
 
-const SCHEMA_COMPONENTS_BASE: readonly AbiParameter[] = [
-  { name: "kind", type: "uint8" },
-  { name: "wisher", type: "address" },
-  { name: "guardian", type: "address" },
-  { name: "beneficiary", type: "address" },
-  { name: "capabilityId", type: "bytes32" },
-  { name: "conditionHash", type: "bytes32" },
-  { name: "storyHash", type: "bytes32" },
-  { name: "actionBudget", type: "uint256" },
-  { name: "isSealed", type: "bool" },
-  { name: "fallbackBeneficiary", type: "address" },
-];
-const SCHEMA_TUPLE_BASE: AbiParameter = { type: "tuple", components: SCHEMA_COMPONENTS_BASE };
-const SCHEMA_TUPLE_FULL: AbiParameter = {
-  type: "tuple",
-  components: [...SCHEMA_COMPONENTS_BASE, { name: "beneficiariesRoot", type: "bytes32" }],
-};
+/** The contract's `Intent`, as viem decodes it. */
+interface IntentShape {
+  kind: number;
+  founder: `0x${string}`;
+  guardian: `0x${string}`;
+  beneficiary: `0x${string}`;
+  fallbackTo: `0x${string}`;
+  capabilityId: `0x${string}`;
+  conditionHash: `0x${string}`;
+  storyHash: `0x${string}`;
+  expenseBudget: bigint;
+  irrevocable: boolean;
+}
 
 async function readSchema(
   client: ReturnType<typeof publicClient>,
   address: `0x${string}`,
 ): Promise<SchemaShape> {
-  const res = await client.call({
-    to: address,
-    data: encodeFunctionData({ abi: cellAbi, functionName: "schema" }),
-  });
-  const ret = (res.data ?? "0x") as `0x${string}`;
-  const byteLen = (ret.length - 2) / 2;
-  const tuple = byteLen >= 11 * 32 ? SCHEMA_TUPLE_FULL : SCHEMA_TUPLE_BASE;
-  const [decoded] = decodeAbiParameters([tuple], ret);
-  return decoded as unknown as SchemaShape;
-}
+  const rc = client.readContract as (a: unknown) => Promise<unknown>;
+  const intent = (await rc({ address, abi: cellAbi, functionName: "intent" })) as IntentShape;
 
-const TIMEOUTS_4: readonly AbiParameter[] = [
-  { name: "amendAfter", type: "uint64" },
-  { name: "escheatAfter", type: "uint64" },
-  { name: "attemptAfter", type: "uint64" },
-  { name: "claimWindow", type: "uint64" },
-];
-const TIMEOUTS_3: readonly AbiParameter[] = TIMEOUTS_4.slice(0, 3);
+  // The share root is not part of the intent — it only exists once a
+  // ShareWithActive votive has actually settled — so it is read separately and
+  // treated as absent when the votive is still waiting.
+  let beneficiariesRoot: `0x${string}` = ZERO_ROOT;
+  try {
+    beneficiariesRoot = (await rc({
+      address,
+      abi: cellAbi,
+      functionName: "shareRoot",
+    })) as `0x${string}`;
+  } catch {
+    // Not every votive has one, and not having one is not an error.
+  }
+
+  return {
+    kind: Number(intent.kind),
+    wisher: intent.founder,
+    guardian: intent.guardian,
+    beneficiary: intent.beneficiary,
+    capabilityId: intent.capabilityId,
+    conditionHash: intent.conditionHash,
+    storyHash: intent.storyHash,
+    actionBudget: intent.expenseBudget,
+    isSealed: intent.irrevocable,
+    fallbackBeneficiary: intent.fallbackTo,
+    beneficiariesRoot,
+  };
+}
 
 async function readTimeouts(
   client: ReturnType<typeof publicClient>,
   address: `0x${string}`,
 ): Promise<readonly [bigint, bigint, bigint, bigint?]> {
-  const res = await client.call({
-    to: address,
-    data: encodeFunctionData({ abi: cellAbi, functionName: "timeouts" }),
-  });
-  const ret = (res.data ?? "0x") as `0x${string}`;
-  const byteLen = (ret.length - 2) / 2;
-  const params = byteLen >= 4 * 32 ? TIMEOUTS_4 : TIMEOUTS_3;
-  const d = decodeAbiParameters(params, ret) as readonly bigint[];
-  return [d[0] ?? 0n, d[1] ?? 0n, d[2] ?? 0n, d[3]];
+  const rc = client.readContract as (a: unknown) => Promise<unknown>;
+  const d = (await rc({
+    address,
+    abi: cellAbi,
+    functionName: "deadlines",
+  })) as readonly bigint[];
+  // guardianAfter, escheatAfter, attemptWindow. There is no fourth clock: the
+  // share claim window is a protocol constant rather than a per-votive setting.
+  return [d[0] ?? 0n, d[1] ?? 0n, d[2] ?? 0n, undefined];
 }
 
 export async function readCell(address: `0x${string}`): Promise<CellView> {
@@ -323,12 +381,12 @@ export async function readCell(address: `0x${string}`): Promise<CellView> {
       readSchema(client, address),
       read("principal"),
       read("parked"),
-      read("streamFeesAccrued"),
-      read("pendingStreamFees"),
-      read("perfFeeTaken"),
-      read("extraProceeds"),
-      read("owedTotal"),
-      read("lastWisherActivity"),
+      read("streamAccrued"),
+      read("pendingStream"),
+      read("performanceCharged"),
+      read("offerings"),
+      read("deferredTotal"),
+      read("lastFounderSignal"),
       readTimeouts(client, address),
       client.getBalance({ address }),
     ]);
@@ -351,20 +409,20 @@ export async function readCell(address: `0x${string}`): Promise<CellView> {
     claimDeadlineR,
   ] = await Promise.allSettled([
     read("asset"),
-    read("positioned"),
-    read("payee"),
-    read("positionTokenId"),
-    read("distributionRoot"),
-    read("distributionTotal"),
-    read("distributionClaimed"),
-    read("distributionChallengeDeadline"),
-    read("distributionClaimDeadline"),
-    read("claimRoot"),
-    read("claimTotal"),
-    read("claimClaimed"),
-    read("claimTotalWeight"),
-    read("claimUnclaimed"),
-    read("claimDeadline"),
+    read("beneficiary"),
+    read("beneficiary"),
+    read("redirectNonce"),
+    read("shareRoot"),
+    read("shareTotal"),
+    read("shareClaimed"),
+    read("shareChallengeEndsAt"),
+    read("shareClaimEndsAt"),
+    read("shareRoot"),
+    read("shareTotal"),
+    read("shareClaimed"),
+    read("shareTotalWeight"),
+    read("unclaimedShares"),
+    read("shareClaimEndsAt"),
   ]);
 
   const s: SchemaShape = schema;
@@ -439,14 +497,14 @@ export async function cellNumber(address: `0x${string}`): Promise<number> {
   const n = (await client.readContract({
     address: factory,
     abi: factoryAbi,
-    functionName: "allCellsLength",
+    functionName: "allVotivesLength",
   })) as bigint;
   const target = address.toLowerCase();
   for (let i = 0; i < Number(n); i++) {
     const a = (await client.readContract({
       address: factory,
       abi: factoryAbi,
-      functionName: "allCells",
+      functionName: "votiveAt",
       args: [BigInt(i)],
     })) as `0x${string}`;
     if (a.toLowerCase() === target) return i + 1;
@@ -461,17 +519,84 @@ export async function listAllCells(): Promise<CellView[]> {
   const n = (await client.readContract({
     address: factory,
     abi: factoryAbi,
-    functionName: "allCellsLength",
+    functionName: "allVotivesLength",
   })) as bigint;
   const addrs = await Promise.all(
     Array.from({ length: Number(n) }, (_, i) =>
       client.readContract({
         address: factory,
         abi: factoryAbi,
-        functionName: "allCells",
+        functionName: "votiveAt",
         args: [BigInt(i)],
       }),
     ),
   );
   return Promise.all((addrs as `0x${string}`[]).map(readCell));
 }
+
+/**
+ * The UI's story schema, as the contract's `Intent`.
+ *
+ * The two describe the same wish with different names and a different field
+ * order, so this is the single place the translation happens. Doing it once, here,
+ * is what lets every page keep the vocabulary its copy is written in while the
+ * chain keeps the vocabulary its storage is written in.
+ *
+ * `founder` falls back to the caller because a wish opened without naming one
+ * belongs to whoever opened it — the contract requires a non-zero founder and
+ * would otherwise revert with nothing useful to say.
+ */
+export interface StorySchemaLike {
+  kind: number | bigint;
+  wisher?: `0x${string}`;
+  guardian: `0x${string}`;
+  beneficiary: `0x${string}`;
+  capabilityId: `0x${string}`;
+  conditionHash: `0x${string}`;
+  storyHash: `0x${string}`;
+  actionBudget: bigint;
+  isSealed: boolean;
+  fallbackBeneficiary: `0x${string}`;
+}
+
+export interface IntentArg {
+  kind: number;
+  founder: `0x${string}`;
+  guardian: `0x${string}`;
+  beneficiary: `0x${string}`;
+  fallbackTo: `0x${string}`;
+  capabilityId: `0x${string}`;
+  conditionHash: `0x${string}`;
+  storyHash: `0x${string}`;
+  expenseBudget: bigint;
+  irrevocable: boolean;
+}
+
+export function toIntent(schema: StorySchemaLike, caller: `0x${string}`): IntentArg {
+  const kind = Number(schema.kind);
+  return {
+    kind,
+    founder: schema.wisher && schema.wisher !== ZERO_ADDR ? schema.wisher : caller,
+    guardian: schema.guardian,
+    beneficiary: schema.beneficiary,
+    fallbackTo: schema.fallbackBeneficiary,
+    capabilityId: schema.capabilityId,
+    conditionHash: schema.conditionHash,
+    storyHash: schema.storyHash,
+    // Only a real-world task may carry a budget; the contract rejects one on any
+    // other kind, so a stale value from a switched form is dropped here rather
+    // than reverting the transaction the user just paid gas to send.
+    expenseBudget: kind === 1 ? schema.actionBudget : 0n,
+    irrevocable: schema.isSealed,
+  };
+}
+
+/** Clocks left at zero mean "use the factory's defaults". */
+export const DEFAULT_DEADLINES = {
+  guardianAfter: 0n,
+  escheatAfter: 0n,
+  attemptWindow: 0n,
+} as const;
+
+/** "Whatever you quote" — the ceiling only matters to a founder who set one. */
+export const ANY_TERMS = { streamBps: 65535, performanceBps: 65535 } as const;
