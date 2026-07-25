@@ -28,3 +28,52 @@ yarn-error.log*
 coverage/
 test-results/
 playwright-report/
+
+# ---------------------------------------------------------------- foundry
+contracts/out/
+contracts/cache/
+contracts/broadcast/
+contracts/.gas-snapshot
+contracts/foundry.lock
+contracts/lcov.info
+contracts/coverage/
+
+# ------------------------------------------------------------------- node
+node_modules/
+dist/
+.next/
+*.tsbuildinfo
+
+# ------------------------------------------------------- secrets & local env
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+keystore/
+deployments/local/
+
+# --------------------------------------------------- local agent / tool state
+# Assistant and editor scratch files are local-only: they are notes about how
+# the work was done, not part of the protocol, and must never be published.
+CLAUDE.md
+**/CLAUDE.md
+AGENTS.md
+**/AGENTS.md
+.claude/
+.cursor/
+.aider*
+.mcp.json
+.local/
+scratch/
+tmp/
+
+# ------------------------------------------------------------------- editors
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# --------------------------------------------------------------------- os
+.DS_Store
+Thumbs.db
