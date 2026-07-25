@@ -312,6 +312,55 @@ contract VotiveFactory is Ownable2Step {
         return _livePosition[votive] != 0;
     }
 
+    /// @notice The recipients and weights of a `ShareWithActive` fulfilment: every
+    ///         live votive funded in `asset_`, paired with what it currently has
+    ///         parked. This is what the executor reads at a snapshot block to
+    ///         build the Merkle allocation, and what anybody else reads at the
+    ///         same block to check the executor's arithmetic.
+    ///
+    /// @dev Filtered by asset because weights only mean anything inside one
+    ///      denomination: a shared ETH wish splits ETH among the ETH votives, a
+    ///      shared USDC wish splits USDC among the USDC ones, and the two never
+    ///      mix. Weighting by parked balance rather than by headcount is what
+    ///      makes flooding the protocol with dust votives pointless.
+    ///
+    ///      A view over the whole live set, so it is meant for `eth_call` and for
+    ///      off-chain snapshotting — never for use inside a transaction.
+    /// @param asset_ `address(0)` for the native asset, otherwise the token.
+    /// @param exclude A votive to leave out — normally the one doing the sharing,
+    ///        since a wish for everyone still waiting is not a wish for itself.
+    ///        Pass `address(0)` to include everything.
+    function liveShares(address asset_, address exclude)
+        external
+        view
+        returns (address[] memory recipients, uint256[] memory weights, uint256 totalWeight)
+    {
+        uint256 length = _live.length;
+
+        uint256 matching;
+        for (uint256 i = 0; i < length; i++) {
+            address candidate = _live[i];
+            if (candidate == exclude) continue;
+            if (VotiveBase(payable(candidate)).asset() == asset_) matching++;
+        }
+
+        recipients = new address[](matching);
+        weights = new uint256[](matching);
+
+        uint256 next;
+        for (uint256 i = 0; i < length; i++) {
+            address candidate = _live[i];
+            if (candidate == exclude) continue;
+            VotiveBase votive = VotiveBase(payable(candidate));
+            if (votive.asset() != asset_) continue;
+            uint256 weight = votive.parked();
+            recipients[next] = votive.beneficiary();
+            weights[next] = weight;
+            totalWeight += weight;
+            next++;
+        }
+    }
+
     // ------------------------------------------------------------------ admin
 
     /// @notice Move the fee destination. Only where fees go — never how much they

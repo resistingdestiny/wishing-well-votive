@@ -37,9 +37,19 @@ failing test.
       `NativeVotive`, `VotiveFactory`. 152 tests.
 - [x] **4. Token votive** — `TokenVotive`, ERC-20 creation path, funding-token
       allowlist. 175 tests.
-- [ ] **5. Multi-party settlement** — pro-rata distribution to the active set and
-      the multi-beneficiary claim lifecycle.
+- [x] **5. Shared settlement** — the `ShareWithActive` wish kind: Merkle
+      allocation over the live set, challenge window, claim window, leftover
+      sweep, and the factory view the snapshot is built from. 196 tests.
 - [ ] **6. Hardening** — invariant suite, deployment script, gas snapshot.
+
+### Deliberately not in M1
+
+- **Multi-beneficiary and identity claims** — a votive whose payout is split
+  across a wisher-signed set of beneficiaries, where a beneficiary may be a wallet
+  *or* a person who has to come forward and prove who they are. The wallet half is
+  a straightforward extension of the shared-settlement machinery; the identity half
+  is inseparable from proof-of-personhood, so it belongs with the World
+  integration in M2 rather than being half-built here.
 
 ## M2 — integrations (not started)
 

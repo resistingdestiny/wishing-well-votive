@@ -28,9 +28,14 @@ enum VotiveState {
 ///   The executor is reimbursed up to the intent's `expenseBudget` out of the
 ///   settled value, and whatever is left over goes where a `ReleaseOnCondition`
 ///   would have sent it.
+/// - `ShareWithActive` — the wish is for everyone still waiting. On fulfilment
+///   the settled value is not paid to one address at all; it is set aside for
+///   the votives that were still open at a snapshot block, in proportion to what
+///   each of them had parked, and each one pulls its own slice.
 enum VotiveKind {
     ReleaseOnCondition,
-    RealWorldTask
+    RealWorldTask,
+    ShareWithActive
 }
 
 /// @notice The machine-readable form of a wish, fixed at creation.
