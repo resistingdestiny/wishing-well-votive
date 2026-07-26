@@ -301,6 +301,11 @@ model Submission {
   body  String
   /// 0x + 64 hex. The commitment the milestone is derived from.
   resultHash String?
+  /// The short label `resultHash` was derived from, when it was derived here rather
+  /// than supplied. Kept so the preimage can be rebuilt and the commitment checked
+  /// by anyone reading the submission — null means the agent gave us the hash
+  /// directly and there is no preimage of ours to show.
+  milestone  String?
 
   submittedAt DateTime @default(now())
   decidesAt   DateTime

@@ -20,7 +20,7 @@ import type { SkillSpec } from "@/core/skills/skill";
 import { CopyBlock } from "./CopyBlock";
 
 const SURFACE_WORD: Record<string, string> = {
-  sdk: "npm package",
+  sdk: "SDK function",
   http: "HTTP endpoint",
   chain: "on chain",
 };
@@ -50,11 +50,20 @@ function ContractRow({ label, env, chain }: { label: string; env: string; chain:
   );
 }
 
-export function SkillCard({ spec, probes }: { spec: SkillSpec; probes: Probe[] }) {
+export function SkillCard({
+  spec,
+  probes,
+  base,
+}: {
+  spec: SkillSpec;
+  probes: Probe[];
+  base: string;
+}) {
   const state = skillState(spec, probes);
   const reason = skillStateReason(spec, probes);
-  const installLine =
-    spec.install.length > 0 ? `npm install ${spec.install.join(" ")}` : null;
+  // The URL, not `npm install`. Every skill is loadable as a file from this
+  // deployment; the npm line named a package the registry does not have.
+  const installLine = `curl ${base}/skills/${spec.slug}`;
 
   return (
     <article className="panel" data-reveal data-testid={`skill-${spec.slug}`} data-state={state} id={spec.slug}>
@@ -82,14 +91,13 @@ export function SkillCard({ spec, probes }: { spec: SkillSpec; probes: Probe[] }
         {reason}
       </p>
 
-      {installLine ? (
-        <CopyBlock
-          title="Install"
-          language="bash"
-          code={installLine}
-          testId={`skill-install-${spec.slug}`}
-        />
-      ) : null}
+      <CopyBlock
+        title="Load this skill"
+        language="bash"
+        code={installLine}
+        note="Served by this deployment, with its own addresses resolved into it."
+        testId={`skill-install-${spec.slug}`}
+      />
 
       <h4 style={{ marginBottom: "0.35rem" }}>What you hold</h4>
       {spec.config.length === 0 ? (

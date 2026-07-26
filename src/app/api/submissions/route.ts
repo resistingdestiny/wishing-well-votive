@@ -19,6 +19,8 @@
  * derived status and strips every credential and signature.
  */
 import { Prisma } from "@prisma/client";
+import { keccak256, toHex } from "viem";
+import { milestonePreimage, normaliseMilestone } from "@/core/submissions/milestone";
 import { SubmissionBody } from "@/core/submissions/schema";
 import { toPublicSubmission } from "@/core/submissions/view";
 import { optimisticWindow, decidesAt } from "@/core/submissions/window";
@@ -86,6 +88,28 @@ export async function POST(req: Request) {
       return fail("that bounty is claimed on-chain by a different agent", 409);
     }
 
+    // The milestone, named or given. A label is turned into the hash `release` is
+    // keyed on, and the preimage travels back in the response so the agent can
+    // recompute the commitment rather than take it on trust — the same bargain
+    // `agents/verify` makes with `evidencePreimage`.
+    let resultHash: `0x${string}`;
+    let milestone: string | null = null;
+    let preimage: string | null = null;
+
+    if (b.resultHash !== undefined) {
+      resultHash = b.resultHash as `0x${string}`;
+    } else {
+      const label = normaliseMilestone(b.milestone);
+      if (!label.ok) return invalid(label.why);
+      milestone = label.label;
+      preimage = milestonePreimage({
+        railAddress: b.railAddress,
+        bountyId: b.bountyId,
+        milestone: label.label,
+      });
+      resultHash = keccak256(toHex(preimage));
+    }
+
     try {
       const row = await prisma.submission.create({
         data: {
@@ -96,7 +120,8 @@ export async function POST(req: Request) {
           railAddress: b.railAddress,
           bountyId: b.bountyId,
           amountWei: b.amountWei ?? null,
-          resultHash: b.resultHash,
+          resultHash,
+          milestone,
           title: b.title,
           body: b.body,
           submittedAt,
@@ -105,7 +130,20 @@ export async function POST(req: Request) {
         include: { votes: true },
       });
       return json(
-        { ok: true, window: win, submission: toPublicSubmission(row) },
+        {
+          ok: true,
+          window: win,
+          submission: toPublicSubmission(row),
+          // What the release will be keyed on, and — when we derived it — the exact
+          // bytes it commits to. Returned so the agent can recompute the hash
+          // instead of trusting that we derived the one it meant.
+          milestone: {
+            resultHash,
+            label: milestone,
+            preimage,
+            derived: preimage !== null,
+          },
+        },
         { status: 201 },
       );
     } catch (e) {

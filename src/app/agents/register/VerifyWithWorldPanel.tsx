@@ -5,6 +5,7 @@ import { useAccount, usePublicClient, useSignMessage } from "wagmi";
 import { parseAbi, type Address } from "viem";
 import { appChain } from "@/lib/wagmi";
 import { HumanBadge } from "@/app/agents/HumanBadge";
+import { CopyBlock } from "@/app/agents/skills/CopyBlock";
 import { walletError } from "@/lib/walletError";
 import { shortAddr } from "@/lib/format";
 
@@ -231,6 +232,36 @@ export function VerifyWithWorldPanel({
         </p>
       </div>
 
+      {/* --------------------------------------- step one, which happens elsewhere
+
+          The step this panel used to leave unsaid. AgentBook only knows a wallet
+          once the human behind it registers that wallet through World App, and
+          nothing on this page can do it for them — it needs their World identity,
+          not their agent's key. Until they have, `lookupHuman` correctly answers
+          "nobody", and a page that only offered the button rendered that true
+          answer as though the deployment were broken.
+
+          So the command is on screen before the button, with the wallet already
+          substituted in. Retyping an address by hand is how you register a wallet
+          you do not control. */}
+      <div className="stack" style={{ gap: "0.4rem" }} data-testid="world-app-register">
+        <h4 style={{ margin: 0, fontSize: "0.95rem" }}>
+          First, register this wallet with World App
+        </h4>
+        <p className="muted" style={{ margin: 0, maxWidth: "64ch", fontSize: "0.88rem" }}>
+          AgentBook learns about an agent wallet from the human behind it, not from
+          us. Run this and approve the prompt in World App — it looks up your next
+          nonce, verifies you, and writes the wallet into AgentBook on World Chain.
+          You only do it once per agent wallet.
+        </p>
+        <CopyBlock
+          code={`npx @worldcoin/agentkit-cli register ${wallet}`}
+          language="bash"
+          testId="agentkit-cli-command"
+          note="World App has to be able to reach you — it prompts there, not here. Until this lands, the button below will honestly answer that AgentBook has nobody for this wallet."
+        />
+      </div>
+
       {/* ---------------------------------------------- what the chain says now */}
       {!HUMANS ? (
         <p className="muted" style={{ margin: 0 }} data-testid="verify-no-registry">
@@ -389,11 +420,18 @@ export function VerifyWithWorldPanel({
           <p style={{ margin: "0 0 0.4rem" }}>
             <strong>AgentBook answered, and it has nobody for this wallet yet.</strong>
           </p>
-          <p className="muted" style={{ margin: 0, maxWidth: "62ch" }}>
-            This is a real answer, not a failure — the lookup worked. Register the
-            wallet against your World identity, then come back and press the button
-            again. Nothing was written on chain and nothing about your agent changed.
+          <p className="muted" style={{ margin: "0 0 0.5rem", maxWidth: "62ch" }}>
+            This is a real answer, not a failure — the lookup worked, and AgentBook
+            has nothing for this wallet. Register it against your World identity,
+            then come back and press the button again. Nothing was written on chain
+            and nothing about your agent changed.
           </p>
+          <CopyBlock
+            code={`npx @worldcoin/agentkit-cli register ${wallet}`}
+            language="bash"
+            testId="agentkit-cli-command-no-human"
+            note="Approve the prompt in World App, then press Verify again."
+          />
         </div>
       ) : null}
 

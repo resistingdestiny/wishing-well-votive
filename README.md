@@ -156,24 +156,56 @@ of the implementations below and are not listed individually.
 ### Base Sepolia — chain 84532
 
 The protocol, the World human-backing layer, and the 1inch Aqua integration.
+Every contract in the first table was deployed and verified in one run
+(`forge script … --broadcast --verify`), and the verified-source link is the
+address itself. The ✅ was not taken from the deploy log: each one was re-checked
+afterwards against the Etherscan V2 API, which returned the expected contract name
+for all thirteen.
 
-| contract | address |
-|---|---|
-| `VotiveFactory` | `0x15A67bDCD514719F8d076cA24b3634f51793f769` |
-| `AttestationRegistry` | `0xAA09dED8B14c7eB292ABEF5Edda27bd4f9C47730` |
-| `OpenAccessGate` | `0x70a2F7429531996c9043dA753432b6cD22bE6Ca0` |
-| `HumanBackingRegistry` | `0xcFc7c7F7D5d0F42233cfFE6Ec0FDB7aDF2c093ad` |
-| `StandingLedger` | `0xC42b36D39BAC7f42d62Ec1c6827f2687d724b59f` |
-| `AgentStandingAdapter` | `0xE873C3d53f494D02A30c3dcd8e5f6D6Ae2Ee36a5` |
-| `CommonsPool` | `0x792f6E552363A7110FB9495D2B754868D742eB97` |
-| `HumanBackedAccessGate` | `0xeC0129807b8650f2f582Bd484b592f8376e6fa37` |
-| `ResourceRegistry` | `0x379c25Ec56984D93b22A87a74EB8418200b99d38` |
-| `AgentBountyRail` (standing-gated) | `0x75A59872882C8F39931c762eb7887e1902838924` |
-| `Aqua` (official 1inch, unmodified) | `0x3e5c9d946B8f6771e610E316b5BA87bd9b429910` |
-| `VotiveAquaRouter` (7 votive opcodes appended) | `0x71A5a6164Ce51F48796710100fEE0cEEB3E7287b` |
-| `AquaVotive` (wish-as-vault implementation) | `0xFe95dCE0E6c52396950404C893Fc1Fa1cd3A1cC7` |
-| `VotiveToken` — VOTIVE (funding unit) | `0x736655e2cEBB322D493b4219A6669C81bDe90001` |
-| `VotiveToken` — vUSD (quote token) | `0xdd22b0aff43419d73DbFd5377d24Cf23C1A08C51` |
+| contract | address (verified source) | verified |
+|---|---|---|
+| `VotiveFactory` | [`0x9d37fAd3F07cb4B655a5C27BD20251335FA7E222`](https://sepolia.basescan.org/address/0x9d37fAd3F07cb4B655a5C27BD20251335FA7E222#code) | ✅ |
+| `AttestationRegistry` | [`0xc31903AC19B7F5bB038d435c3739F850Df580edA`](https://sepolia.basescan.org/address/0xc31903AC19B7F5bB038d435c3739F850Df580edA#code) | ✅ |
+| `OpenAccessGate` | [`0xe1Fb9283B2Cd58d147Aad4689eaa01A26Dc2a8d6`](https://sepolia.basescan.org/address/0xe1Fb9283B2Cd58d147Aad4689eaa01A26Dc2a8d6#code) | ✅ |
+| `NativeVotive` (implementation, cloned per ETH-funded wish) | [`0xA71f6f2417C9F88E677eC196656F0FC16029a1aD`](https://sepolia.basescan.org/address/0xA71f6f2417C9F88E677eC196656F0FC16029a1aD#code) | ✅ |
+| `AquaVotive` (implementation, cloned per token-funded wish) | [`0x484752b99981952c6ff40E5ED07f77619D9F2CED`](https://sepolia.basescan.org/address/0x484752b99981952c6ff40E5ED07f77619D9F2CED#code) | ✅ |
+| `WishShare` (implementation, cloned per wish that sells claims) | [`0x7f999e3f1956a5987ceD561035ab6592b0678797`](https://sepolia.basescan.org/address/0x7f999e3f1956a5987ceD561035ab6592b0678797#code) | ✅ |
+| `HumanBackingRegistry` | [`0x84aB2B0d9Dd87ff3ce21aAa386e91E1d2A98c2fb`](https://sepolia.basescan.org/address/0x84aB2B0d9Dd87ff3ce21aAa386e91E1d2A98c2fb#code) | ✅ |
+| `StandingLedger` | [`0x8a7A0c7d4CF4108ef6b76A3234Bab5B48aCEE23c`](https://sepolia.basescan.org/address/0x8a7A0c7d4CF4108ef6b76A3234Bab5B48aCEE23c#code) | ✅ |
+| `AgentStandingAdapter` | [`0xB9db579a3e9d27b8b80C14B3552c168198D2C2c9`](https://sepolia.basescan.org/address/0xB9db579a3e9d27b8b80C14B3552c168198D2C2c9#code) | ✅ |
+| `CommonsPool` | [`0x3fa74D93A4F202E814AD672C03D4448547c2c3Db`](https://sepolia.basescan.org/address/0x3fa74D93A4F202E814AD672C03D4448547c2c3Db#code) | ✅ |
+| `HumanBackedAccessGate` | [`0x1D7409185Ad221D3D864b32E6FEEa8863875baBa`](https://sepolia.basescan.org/address/0x1D7409185Ad221D3D864b32E6FEEa8863875baBa#code) | ✅ (deployed, **not** the factory's gate — see below) |
+| `ResourceRegistry` | [`0x0F92924153936bA74e6B4730298ca7332851549b`](https://sepolia.basescan.org/address/0x0F92924153936bA74e6B4730298ca7332851549b#code) | ✅ |
+| `AgentBountyRail` (standing-gated) | [`0xf787575F83F7B17b150528C492cd5e6CB55b41A5`](https://sepolia.basescan.org/address/0xf787575F83F7B17b150528C492cd5e6CB55b41A5#code) | ✅ |
+
+Deployed earlier and untouched by this deployment:
+
+| contract | address (verified source) | verified |
+|---|---|---|
+| `Aqua` (official 1inch, unmodified) | [`0x3e5c9d946B8f6771e610E316b5BA87bd9b429910`](https://sepolia.basescan.org/address/0x3e5c9d946B8f6771e610E316b5BA87bd9b429910#code) | — |
+| `VotiveAquaRouter` (7 votive opcodes appended) | [`0x71A5a6164Ce51F48796710100fEE0cEEB3E7287b`](https://sepolia.basescan.org/address/0x71A5a6164Ce51F48796710100fEE0cEEB3E7287b#code) | — |
+| `AquaVotive` (the Aqua demo's own vault instance) | [`0xFe95dCE0E6c52396950404C893Fc1Fa1cd3A1cC7`](https://sepolia.basescan.org/address/0xFe95dCE0E6c52396950404C893Fc1Fa1cd3A1cC7#code) | — |
+| `VotiveToken` — VOTIVE (funding unit) | [`0x736655e2cEBB322D493b4219A6669C81bDe90001`](https://sepolia.basescan.org/address/0x736655e2cEBB322D493b4219A6669C81bDe90001#code) | — |
+| `VotiveToken` — vUSD (quote token) | [`0xdd22b0aff43419d73DbFd5377d24Cf23C1A08C51`](https://sepolia.basescan.org/address/0xdd22b0aff43419d73DbFd5377d24Cf23C1A08C51#code) | — |
+
+Two things a reviewer should not have to discover by reading the chain:
+
+- **The factory's gate is `OpenAccessGate`, so anyone may open a wish.**
+  `HumanBackedAccessGate` is deployed and verified, but it is not wired in —
+  `factory.setAccessGate` is a deliberate manual step, because it changes who may
+  open a votive on a live deployment.
+- **The funding-token allowlist is a post-deploy step, and it is easy to miss.**
+  `Deploy.s.sol` only calls `setTokenAllowed` when `VOTIVE_TOKEN` is set, so a
+  deployment run without it starts with an empty allowlist and every
+  `openWithToken` reverts `TokenNotAllowed()` (`0xa29c4986`) while ETH-funded
+  wishes work fine. VOTIVE and vUSD are allowlisted on the factory above. Set
+  `VOTIVE_TOKEN` on the deploy, or call `setTokenAllowed` after it.
+- **The three toolbelt resources are registered on the new `ResourceRegistry`**
+  (`linear-a-corpus-api`, `votive-run-log-db`, `frontier-model-key`), keyed by
+  `keccak256("resource:<slug>")`. `ResourceRegistry` takes the human registry and
+  the standing ledger in its constructor, so it had to be redeployed alongside
+  them — an older one would have metered quotas against a registry where no
+  currently-attested agent exists.
 
 ### Hedera Testnet — chain 296
 
