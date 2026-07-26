@@ -372,3 +372,58 @@ test.describe("taking the other side of a wish", () => {
     expect((await res.json()).error).toMatch(/does not hash to the strategy/i);
   });
 });
+
+/**
+ * The click-through a visitor actually makes, ending in a filled position.
+ *
+ * Everything else about the Aqua work has been proven with scripts, which prove
+ * the contracts and prove nothing about whether a person can reach them. This
+ * one starts on the list of wishes and ends with a different wallet's balance
+ * having changed, entirely through the page.
+ */
+test.describe("trading a wish from the browser", () => {
+  const PK = process.env.DEMO_WALLET_PK as `0x${string}` | undefined;
+  const ADDR = process.env.DEMO_WALLET_ADDRESS as `0x${string}` | undefined;
+
+  test.skip(!PK || !ADDR, "needs the demo wallet");
+
+  test("click a wish from the list, and take the other side of it", async ({ page }) => {
+    test.setTimeout(300_000);
+    await injectWallet(page, {
+      privateKey: PK as `0x${string}`,
+      address: ADDR as `0x${string}`,
+      rpcUrl: RPC,
+      chainId: CHAIN_ID,
+    });
+
+    await page.goto("/explore");
+    const wishLink = page.locator('a[href^="/wish/0x"]').first();
+    await expect(wishLink).toBeVisible({ timeout: 30_000 });
+    await wishLink.click();
+    await expect(page).toHaveURL(/\/wish\/0x[0-9a-fA-F]{40}/);
+
+    const panel = page.getByTestId("take-position");
+    await expect(panel).toBeVisible({ timeout: 30_000 });
+
+    // Wait, rather than asking whether it is visible right now. The panel fetches
+    // the recorded program and does several contract reads before it can offer a
+    // form, so an immediate `isVisible()` is always false — and skipping on that
+    // would report "nothing to trade" in the same green as a passing trade.
+    const amount = page.getByTestId("take-amount");
+    await expect(amount, await panel.innerText()).toBeVisible({ timeout: 60_000 });
+
+    await amount.fill("5");
+
+    // The quote comes back from simulating the program itself. If the order had
+    // been rebuilt wrong this is where it would say so, before any signing.
+    await expect(page.getByTestId("take-quote")).toContainText(/You would receive/i, {
+      timeout: 60_000,
+    });
+
+    await page.getByTestId("take-fill").click();
+    await expect(page.getByTestId("take-done")).toContainText(/You paid 5/i, {
+      timeout: 240_000,
+    });
+    await expect(page.getByTestId("take-done")).toContainText(/of this wish's principal/i);
+  });
+});

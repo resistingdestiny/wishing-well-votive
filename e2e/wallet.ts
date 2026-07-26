@@ -124,9 +124,17 @@ export async function injectWallet(page: Page, options: InjectedWalletOptions): 
     window.__signTx__ = async (tx) => {
       const { privateKeyToAccount } = await import("https://esm.sh/viem@2/accounts");
       const account = privateKeyToAccount(window.__TEST_PK__);
-      const nonce = await window.ethereum.request({
+      // Never go backwards. Public testnet RPCs are load-balanced, so a node
+      // asked for "pending" moments after a send can still answer with the
+      // count from before it — and signing that nonce again fails with
+      // "nonce too low", which reads like a broken button rather than a lagging
+      // node. Any flow that sends twice in a row (approve, then swap) hits this.
+      const fetched = Number(BigInt(await window.ethereum.request({
         method: "eth_getTransactionCount", params: [account.address, "pending"],
-      });
+      })));
+      const floor = window.__NEXT_NONCE__ ?? 0;
+      const nonce = Math.max(fetched, floor);
+      window.__NEXT_NONCE__ = nonce + 1;
       const gas = tx.gas ?? await window.ethereum.request({
         method: "eth_estimateGas", params: [tx],
       });

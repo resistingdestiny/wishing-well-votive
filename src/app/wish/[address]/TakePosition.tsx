@@ -18,6 +18,11 @@ import { Field } from "@/app/ui/Field";
 const routerAbi = parseAbi([
   "struct Order { address maker; uint256 traits; bytes data; }",
   "function swap(Order order, address tokenIn, address tokenOut, uint256 amount, bytes takerTraitsAndData) returns (uint256 amountIn, uint256 amountOut, bytes32 orderHash)",
+  // Static by design: it runs the program with `isStaticContext` set, so it
+  // prices the fill without moving anything and without needing an allowance.
+  // Simulating `swap` instead would refuse every quote until you had already
+  // approved, and report it as the program rejecting you.
+  "function quote(Order order, address tokenIn, address tokenOut, uint256 amount, bytes takerTraitsAndData) view returns (uint256 amountIn, uint256 amountOut, bytes32 orderHash)",
   "function hash(Order order) view returns (bytes32)",
 ]);
 
@@ -157,10 +162,16 @@ export function TakePosition({ votive, positionOpen, fillable, blockerText }: Pr
   /**
    * What this fill would pay out, from the VM itself.
    *
-   * Simulated rather than computed here. Re-implementing the curve in the
-   * browser would give a number that is right until an instruction changes and
-   * then quietly wrong — and the bonus instruction means the answer depends on
-   * *who* is asking, which a client-side formula would have no way to know.
+   * Asked of the router rather than computed here. Re-implementing the curve in
+   * the browser would give a number that is right until an instruction changes
+   * and then quietly wrong — and the bonus instruction means the answer depends
+   * on *who* is asking, which a client-side formula would have no way to know.
+   *
+   * `quote`, not a simulated `swap`. `swap` moves tokens, so simulating it fails
+   * for anyone who has not already approved the router — and it fails as a bare
+   * revert, which this panel would then report as the program refusing them.
+   * "You cannot trade here" and "you have not approved yet" are not the same
+   * sentence, and only one of them is true.
    */
   const requote = useCallback(async () => {
     if (!client || !loaded || !address || !amount) {
@@ -180,11 +191,13 @@ export function TakePosition({ votive, positionOpen, fillable, blockerText }: Pr
     }
     setQuoting(true);
     try {
-      const { result } = await client.simulateContract({
+      const result = await client.readContract({
         address: loaded.router,
         abi: routerAbi,
-        functionName: "swap",
+        functionName: "quote",
         args: [loaded.order, loaded.quote.address, loaded.principal.address, amt, buildTakerTraits()],
+        // The program reads the caller to price the standing bonus, so the quote
+        // is only honest if it is asked as the person who would fill it.
         account: address,
       });
       setExpected((result as readonly bigint[])[1]);
@@ -214,14 +227,14 @@ export function TakePosition({ votive, positionOpen, fillable, blockerText }: Pr
         throw new Error(`You only hold ${formatUnits(loaded.quote.balance, loaded.quote.decimals)} ${loaded.quote.symbol}.`);
       }
 
-      // Simulate once more immediately before sending, and use the result as the
+      // Price it once more immediately before sending, and use the answer as the
       // floor. Between the quote on screen and the transaction landing, another
       // fill can move the reserves; without a floor you would take whatever price
       // the curve had drifted to.
-      const { result } = await client.simulateContract({
+      const result = await client.readContract({
         address: loaded.router,
         abi: routerAbi,
-        functionName: "swap",
+        functionName: "quote",
         args: [loaded.order, loaded.quote.address, loaded.principal.address, amt, buildTakerTraits()],
         account: address,
       });
@@ -343,7 +356,7 @@ export function TakePosition({ votive, positionOpen, fillable, blockerText }: Pr
                 who is asking.
               </>
             ) : amount ? (
-              "The VM would refuse this fill. Check the gates above."
+              "The program will not price this fill. Either a gate above is shut, or the amount is more than the position can pay out."
             ) : (
               "Enter an amount to see what the program quotes you."
             )}
