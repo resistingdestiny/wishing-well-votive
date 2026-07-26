@@ -10,7 +10,7 @@
  * the VM asks, and the balances of the same Aqua contract that custodies them, so
  * what this page says and what a fill would actually do cannot drift apart.
  */
-import { createPublicClient, http, parseAbi, type Chain } from "viem";
+import { createPublicClient, getAddress, http, parseAbi, type Chain } from "viem";
 import { prisma } from "@/lib/db";
 import { explorerAddress } from "@/lib/txLog";
 
@@ -165,7 +165,7 @@ export async function strategyFor(
 ): Promise<StrategyRecord | null> {
   const row = await prisma.aquaStrategy
     .findFirst({
-      ...(votive ? { where: { votive: votive.toLowerCase() } } : {}),
+      ...(votive ? { where: { votive: getAddress(votive) } } : {}),
       orderBy: { createdAt: "desc" },
     })
     .catch(() => null);
