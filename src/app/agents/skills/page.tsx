@@ -22,6 +22,7 @@ import { SKILLS } from "@/core/skills/catalogue";
 import { assuranceLabel } from "@/core/skills/skill";
 import { AGENT_CONTRACTS } from "@/lib/chainReads";
 import { skillReadiness, toolbeltStatus, type ToolbeltStatus } from "@/lib/skillReadiness";
+import { baseUrl } from "@/lib/baseUrl";
 import { probeBadge, probeWord, type Probe } from "@/core/skills/readiness";
 import { CopyBlock } from "./CopyBlock";
 import { ReadinessStrip } from "./ReadinessStrip";
@@ -35,16 +36,24 @@ export const metadata: Metadata = {
     "Every capability Votive offers an agent: payments on Hedera, escrowed bounties, the human-backed standing that gates them, and a shared toolbelt of keys, data and databases released only when the community agrees.",
 };
 
-const INSTALL = `# @votive/agent-skills is not on npm yet — the registry answers 404.
-# Pack it from a checkout; \`prepare\` builds dist/ during install.
-git clone <this repo> && cd wishing-well-votive/sdk
-npm install && npm pack          # -> votive-agent-skills-0.1.0.tgz
+/**
+ * How a builder gets these capabilities, in the order of least work.
+ *
+ * The URL comes first because it is the only path with no prerequisite. The
+ * package used to lead, and it could not: `@votive/agent-skills` is not on npm —
+ * the registry answers 404 — so the first instruction on the page was one nobody
+ * could follow without cloning the repo and packing a tarball. Worse, it made the
+ * agent depend on a toolchain a human had to set up, which is exactly backwards
+ * for something you hand to an agent.
+ */
+function pullCommand(base: string): string {
+  return `# One URL. No package, no registry, no build step.
+curl -fsSL ${base}/skills/install | sh
 
-cd ~/my-agent
-npm install /path/to/votive-agent-skills-0.1.0.tgz
-
-# Optional peers, both imported lazily:
-npm install @hashgraph/sdk @worldcoin/agentkit-core`;
+# Or read the index and pull only what you want:
+curl ${base}/skills
+curl ${base}/skills/submissions`;
+}
 
 const FIRST_AGENT = `import {createHederaRail, createVotiveAgent} from '@votive/agent-skills';
 
@@ -139,6 +148,9 @@ function ToolbeltCard({ status }: { status: ToolbeltStatus }) {
 }
 
 export default async function SkillsPage() {
+  // This deployment's own origin, so every command on the page is runnable as
+  // printed rather than after the reader substitutes a host.
+  const base = baseUrl();
   let probes: Probe[] = [];
   let probeError = "";
   try {
@@ -192,12 +204,18 @@ export default async function SkillsPage() {
 
       <h2>Start here</h2>
       <div className="stack">
-        <CopyBlock title="Install" language="bash" code={INSTALL} testId="install-block" />
         <CopyBlock
-          title="Your first agent"
+          title="Give your agent the skills"
+          language="bash"
+          code={pullCommand(base)}
+          note="Each skill is served as a Markdown file by this deployment, with this deployment's own contract addresses resolved into it. Nothing is installed from a registry."
+          testId="install-block"
+        />
+        <CopyBlock
+          title="Your first agent, if you would rather use the TypeScript SDK"
           language="ts"
           code={FIRST_AGENT}
-          note="Two of the eight tools need only a rail. The other six appear as you give the agent a bounty client, a standing view, and a resource commons — each of which is one constructor, all of them exported from the package root."
+          note="Optional, and only if you want typed functions rather than HTTP: the SDK is not published to npm, so it installs from a packed checkout. Two of the eight tools need only a rail. The other six appear as you give the agent a bounty client, a standing view, and a resource commons — each of which is one constructor, all of them exported from the package root."
           testId="first-agent-block"
         />
       </div>
@@ -239,7 +257,7 @@ export default async function SkillsPage() {
             <h2 id={`group-${group.key}`}>{group.label}</h2>
             <div className="stack">
               {specs.map((spec) => (
-                <SkillCard key={spec.slug} spec={spec} probes={probes} />
+                <SkillCard key={spec.slug} spec={spec} probes={probes} base={base} />
               ))}
             </div>
           </section>
