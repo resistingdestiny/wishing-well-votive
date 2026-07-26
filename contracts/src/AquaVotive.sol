@@ -123,6 +123,20 @@ contract AquaVotive is TokenVotive {
         // Bounded, not infinite. Aqua may spend exactly what was offered.
         IERC20(token).forceApprove(address(aqua), offer);
 
+        // And the quote token, because the performance fee is taken in it.
+        //
+        // The fee instruction ends in `AQUA.pull(maker, ..., tokenIn, fee, treasury)`,
+        // which is a `transferFrom` against this contract. Approving only the
+        // principal left every fill above the fee threshold reverting — and
+        // reverting *late*, because `quote` runs with `isStaticContext` set and
+        // skips the pull entirely. The screen therefore priced the fill happily
+        // and the transaction then failed, which is the worst shape a bug can
+        // take on a page whose whole claim is that what you see is what happens.
+        //
+        // Bounded by the asking price: a fill cannot bring in more quote than the
+        // position is priced to take, so the fee cannot exceed it either.
+        IERC20(quoteToken_).forceApprove(address(aqua), asking);
+
         address[] memory tokens = new address[](2);
         tokens[0] = address(token);
         tokens[1] = quoteToken_;
@@ -157,12 +171,14 @@ contract AquaVotive is TokenVotive {
         tokens[1] = quoteToken;
 
         bytes32 closing = strategyHash;
+        address closingQuote = quoteToken;
         strategyHash = bytes32(0);
         offered = 0;
         askingReserve = 0;
 
-        // Allowance first, so a reverting `dock` cannot leave one standing.
+        // Allowances first, so a reverting `dock` cannot leave one standing.
         IERC20(token).forceApprove(address(aqua), 0);
+        if (closingQuote != address(0)) IERC20(closingQuote).forceApprove(address(aqua), 0);
         aqua.dock(router, closing, tokens);
 
         emit PositionClosed(closing);

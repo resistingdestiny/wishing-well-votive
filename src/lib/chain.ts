@@ -274,9 +274,9 @@ export interface CellView {
   assetDecimals: number;
   assetSymbol: string;
 
+  /** True only when the beneficiary is a transferable-position registry. */
   positioned: boolean;
   payee: `0x${string}`;
-  positionTokenId: bigint;
 
   distributionRoot: `0x${string}`;
   distributionTotal: bigint;
@@ -387,6 +387,7 @@ async function readTimeouts(
 
 export async function readCell(address: `0x${string}`): Promise<CellView> {
   const client = publicClient();
+  const { positionRegistry } = chainConfig();
 
   const rc = client.readContract as (a: unknown) => Promise<unknown>;
   const read = (functionName: string, args?: readonly unknown[]): Promise<unknown> =>
@@ -410,9 +411,7 @@ export async function readCell(address: `0x${string}`): Promise<CellView> {
 
   const [
     assetR,
-    positionedR,
     payeeR,
-    tokenIdR,
     distRootR,
     distTotalR,
     distClaimedR,
@@ -427,8 +426,6 @@ export async function readCell(address: `0x${string}`): Promise<CellView> {
   ] = await Promise.allSettled([
     read("asset"),
     read("beneficiary"),
-    read("beneficiary"),
-    read("redirectNonce"),
     read("shareRoot"),
     read("shareTotal"),
     read("shareClaimed"),
@@ -490,9 +487,15 @@ export async function readCell(address: `0x${string}`): Promise<CellView> {
     assetIsNative,
     assetDecimals,
     assetSymbol,
-    positioned: settled<boolean>(positionedR, false),
+    // A wish's payout is "positioned" only when its beneficiary is a registry
+    // that makes the claim transferable. This used to be `beneficiary()` — an
+    // address string — cast to `boolean`, which is truthy for every address, so
+    // every wish claimed to have a transferable ERC-721 position and none of
+    // them did. No such registry is deployed, so today this is always false.
+    positioned:
+      positionRegistry !== undefined &&
+      s.beneficiary.toLowerCase() === positionRegistry.toLowerCase(),
     payee: settled<`0x${string}`>(payeeR, s.beneficiary === ZERO_ADDR ? s.wisher : s.beneficiary),
-    positionTokenId: settled<bigint>(tokenIdR, 0n),
     distributionRoot: settled<`0x${string}`>(distRootR, ZERO_ROOT),
     distributionTotal: settled<bigint>(distTotalR, 0n),
     distributionClaimed: settled<bigint>(distClaimedR, 0n),

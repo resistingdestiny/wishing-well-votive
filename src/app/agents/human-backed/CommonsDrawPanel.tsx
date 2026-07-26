@@ -4,8 +4,10 @@ import { useCallback, useEffect, useState } from "react";
 import { useAccount, usePublicClient, useWriteContract } from "wagmi";
 import { formatEther, isAddress, parseAbi, parseEther, type Address } from "viem";
 import { appChain } from "@/lib/wagmi";
+import { ChainGuard } from "@/app/ui/ChainGuard";
 import { Field } from "@/app/ui/Field";
 import { noteTx } from "@/lib/noteTx";
+import { walletError } from "@/lib/walletError";
 
 const commonsAbi = parseAbi([
   "function draw(uint256 amount, address payee) returns (bytes32)",
@@ -158,7 +160,7 @@ export function CommonsDrawPanel() {
       setAmount("");
       await refresh();
     } catch (e) {
-      setError((e as Error).message.slice(0, 300));
+      setError(walletError(e));
     } finally {
       setBusy(false);
     }
@@ -242,9 +244,15 @@ export function CommonsDrawPanel() {
                   data-testid="commons-payee"
                 />
               </Field>
-              <button onClick={draw} disabled={busy} data-testid="commons-draw-button">
-                {busy ? "Drawing…" : "Draw"}
-              </button>
+              <ChainGuard
+                chainId={appChain.id}
+                chainName={appChain.name}
+                action="draw from the commons"
+              >
+                <button onClick={draw} disabled={busy} data-testid="commons-draw-button">
+                  {busy ? "Drawing…" : "Draw"}
+                </button>
+              </ChainGuard>
             </div>
           )}
         </>

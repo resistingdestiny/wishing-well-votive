@@ -366,13 +366,18 @@ export default async function WishDetail({
                 )}
               </td>
             </tr>
+            {/* Only when the beneficiary is a registry that makes the claim
+                transferable. This row used to render on every wish and name an
+                ERC-721 that no contract in this repo implements — `positioned`
+                was an address cast to a boolean, so it was true for everyone.
+                No such registry is deployed, so today it renders for nobody. */}
             {cell.positioned ? (
               <tr data-testid="position-row">
-                <th>Position</th>
+                <th>Payout claim</th>
                 <td>
-                  Transferable ERC-721 · held by{" "}
-                  <span className="mono">{cell.payee}</span>. Whoever holds it is paid at
-                  fulfilment; amendment stays with the depositor&rsquo;s key.
+                  Held by the position registry at{" "}
+                  <span className="mono">{cell.payee}</span>, which pays whoever holds
+                  the claim at fulfilment. Amendment stays with the depositor&rsquo;s key.
                 </td>
               </tr>
             ) : null}
@@ -380,7 +385,7 @@ export default async function WishDetail({
               <th>Beneficiary</th>
               <td className="mono">
                 {cell.positioned
-                  ? "transferable position (above)"
+                  ? "the position registry (above)"
                   : cell.beneficiary === "0x0000000000000000000000000000000000000000"
                     ? "depositor"
                     : cell.beneficiary}

@@ -6,6 +6,7 @@ import { formatUnits, isAddress, parseUnits } from "viem";
 import { appChain, RESOURCE_POOL_ADDRESS } from "@/lib/wagmi";
 import { erc20Abi, erc4626Abi } from "@/lib/chain";
 import { Field } from "@/app/ui/Field";
+import { walletError } from "@/lib/walletError";
 
 export function PoolPanel() {
   const { address, isConnected } = useAccount();
@@ -76,7 +77,7 @@ export function PoolPanel() {
       await fn();
       if (RESOURCE_POOL_ADDRESS) await refresh(RESOURCE_POOL_ADDRESS, address);
     } catch (e) {
-      setError((e as Error).message.slice(0, 300));
+      setError(walletError(e));
     } finally {
       setBusy(false);
     }

@@ -203,10 +203,14 @@ export function encodeStrategy(order: AquaOrder): Hex {
  * a plain `transferFrom` and pushes it to the maker through Aqua, so all the
  * filler needs is an ERC-20 approval to the router.
  *
- * `isFirstTransferFromTaker` orders the legs taker→maker first. That is not a
- * preference: the performance fee is pulled from the maker in the token coming
- * in, so the quote has to have arrived before the fee is taken or the pull finds
- * nothing there.
+ * `isFirstTransferFromTaker` orders the two transfer legs taker→maker first.
+ *
+ * It does NOT, as an earlier version of this comment claimed, make the quote
+ * arrive before the performance fee is taken. The whole program — fee pull
+ * included — runs in `runLoop()` before either leg moves, so the maker has to be
+ * able to cover the fee from what it already holds regardless of leg order. The
+ * flag is still right, because settling the taker's leg first means a maker that
+ * cannot deliver fails before the taker's money has gone anywhere.
  *
  * Every byte of this is checked against the Solidity library in
  * `sdk/test/aquaProgram.test.ts` rather than reasoned about. A wrong bit here
