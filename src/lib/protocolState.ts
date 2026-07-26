@@ -92,6 +92,13 @@ function client() {
   });
 }
 
+const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000" as const;
+
+const erc20MetaAbi = parseAbi([
+  "function symbol() view returns (string)",
+  "function decimals() view returns (uint8)",
+]);
+
 // ---------------------------------------------------------------- the shapes
 
 export interface VotivePosition {
@@ -102,6 +109,16 @@ export interface VotivePosition {
   principal: bigint;
   parked: bigint;
   pendingStream: bigint;
+  /**
+   * What this wish is actually funded in.
+   *
+   * Carried per position rather than assumed. /live hardcoded "ETH" for every
+   * row, so wishes funded in VOTIVE displayed as "1.0000 ETH" — a false
+   * statement about the money, on the page whose entire purpose is that the
+   * numbers can be checked.
+   */
+  assetSymbol: string;
+  assetDecimals: number;
   explorerUrl: string;
 }
 
@@ -143,14 +160,28 @@ export async function votivePositions(limit = 50): Promise<VotivePosition[]> {
     recent.map(async (address) => {
       const read = (functionName: string) =>
         pc.readContract({ address, abi: cellAbi, functionName } as never);
-      const [state, intent, principal, parked, pending] = await Promise.all([
+      const [state, intent, principal, parked, pending, asset] = await Promise.all([
         read("state"),
         read("intent"),
         read("principal"),
         read("parked"),
         read("pendingStream"),
+        // Zero means the wish is funded in the chain's native coin.
+        read("asset").catch(() => ZERO_ADDRESS),
       ]);
       const kind = Number((intent as { kind: number | bigint }).kind);
+
+      const assetAddr = asset as `0x${string}`;
+      let assetSymbol = "ETH";
+      let assetDecimals = 18;
+      if (assetAddr && assetAddr !== ZERO_ADDRESS) {
+        const [sym, dec] = await Promise.all([
+          pc.readContract({ address: assetAddr, abi: erc20MetaAbi, functionName: "symbol" }).catch(() => "TOKEN"),
+          pc.readContract({ address: assetAddr, abi: erc20MetaAbi, functionName: "decimals" }).catch(() => 18),
+        ]);
+        assetSymbol = sym as string;
+        assetDecimals = Number(dec);
+      }
       return {
         address,
         state: Number(state),
@@ -159,6 +190,8 @@ export async function votivePositions(limit = 50): Promise<VotivePosition[]> {
         principal: principal as bigint,
         parked: parked as bigint,
         pendingStream: pending as bigint,
+        assetSymbol,
+        assetDecimals,
         explorerUrl: explorerAddress("base-sepolia", address),
       } satisfies VotivePosition;
     }),
