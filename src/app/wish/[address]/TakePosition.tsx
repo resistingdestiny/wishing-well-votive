@@ -65,17 +65,24 @@ interface Props {
 }
 
 /**
- * Taking the other side of a wish.
- *
- * A wish may be waiting on a capability that arrives in a decade. The founder
- * should not have to wait it out to get their money back, and somebody who
- * thinks the frontier will move sooner should be able to say so with money. That
- * is the whole argument for a wish being a position rather than a locked box.
+ * Buying the principal a wish has put up for sale.
  *
  * What happens when you fill: you pay the quote token in, and a slice of the
- * wish's own principal comes out, priced on the curve against the reserves the
- * founder set. Nothing is custodied by us or by Aqua at any point — the wish
- * holds its principal until the instant of the fill.
+ * wish's own principal comes out into your wallet, priced on the curve against
+ * the reserves the founder set. Nothing is custodied by us or by Aqua at any
+ * point — the wish holds its principal until the instant of the fill.
+ *
+ * **A filler buys tokens, not a stake.** The program's only record of them is the
+ * transfer; no instruction registers a beneficiary, so a filler holds no claim on
+ * the wish and is owed nothing when it settles. The copy below has to keep saying
+ * so, because "take the other side of a wish" reads like part-ownership to almost
+ * everybody, and the one thing this page cannot afford is a claim that does not
+ * survive being checked against the contracts.
+ *
+ * Note the gate ordering this sits behind: `onlyConditionMet` means a fill is
+ * impossible until the wish has been attested true. So this is not an early exit
+ * for the founder — it is a price fixed now and settled only if the frontier
+ * actually arrives.
  *
  * **The order is reconstructed and then checked against the chain before
  * anything is signed.** Aqua stores only the order's hash, so the program bytes
@@ -275,8 +282,9 @@ export function TakePosition({ votive, positionOpen, fillable, blockerText }: Pr
         subject: votive,
       });
       setDone(
-        `Filled. You paid ${amount} ${loaded.quote.symbol} and took ` +
-          `${formatUnits(out, loaded.principal.decimals)} ${loaded.principal.symbol} of this wish's principal.`,
+        `Filled. You paid ${amount} ${loaded.quote.symbol}, and ` +
+          `${formatUnits(out, loaded.principal.decimals)} ${loaded.principal.symbol} of this wish's principal ` +
+          `is now in your wallet. It carries no claim on the wish itself.`,
       );
       setAmount("");
       await load();
@@ -292,12 +300,15 @@ export function TakePosition({ votive, positionOpen, fillable, blockerText }: Pr
   return (
     <div className="panel stack hoverable" style={{ marginTop: 14 }} data-testid="take-position">
       <div>
-        <h3 style={{ margin: 0 }}>Take the other side</h3>
+        <h3 style={{ margin: 0 }}>Buy this wish&rsquo;s principal</h3>
         <p className="muted" style={{ margin: "0.3rem 0 0" }}>
-          This wish is a position, not a locked box. Pay the quote token in and a
-          slice of the wish&rsquo;s own principal comes out, priced on the curve
-          against the reserves its founder set. The wish holds its principal the
-          entire time — nothing is custodied here or by Aqua.
+          The founder has put part of this wish&rsquo;s principal up for sale at a
+          price they set. Pay the quote token in and those principal tokens arrive
+          in your wallet, priced on the curve against the reserves the founder
+          chose. That is the whole of what you get: the tokens. Buying gives you no
+          claim on the wish, no say in it, and no share of what it pays out when it
+          settles. The wish holds its principal the entire time — nothing is
+          custodied here or by Aqua.
         </p>
       </div>
 

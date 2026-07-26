@@ -217,7 +217,7 @@ test.describe("a founder managing their wish's position", () => {
     // not. Which one depends on chain state, and asserting either specifically
     // would make this test depend on the order the suite happens to run in.
     const control = page.getByRole("button", {
-      name: /Close the position|Offer this wish as a position/i,
+      name: /Close the position|Offer the principal for sale/i,
     });
     await expect(control).toBeVisible({ timeout: 30_000 });
   });
@@ -255,7 +255,7 @@ test.describe("a founder managing their wish's position", () => {
     await offerField.fill("40");
     await page.getByPlaceholder("120").fill("80");
 
-    await page.getByRole("button", { name: /Offer this wish as a position/i }).click();
+    await page.getByRole("button", { name: /Offer the principal for sale/i }).click();
     // The encoding guard runs before anything is sent, so a failure here would
     // say so rather than silently shipping a position nobody could fill.
     await expect(page.locator("body")).toContainText(/now quotable/i, { timeout: 180_000 });
@@ -334,6 +334,10 @@ test.describe("taking the other side of a wish", () => {
     test.skip(!open, "no position is open on this wish right now");
 
     await expect(panel).toContainText(/nothing is custodied/i);
+    // The load-bearing sentence. A filler receives ERC-20 principal and nothing
+    // else — no instruction in the program records them as a beneficiary — so
+    // copy that implied a stake would be a claim the contracts contradict.
+    await expect(panel).toContainText(/no claim on the wish/i);
     // Exactly one of: an invitation to connect, a reason it cannot be taken, or
     // the trade itself. What must never appear is a trade form with no order
     // behind it.

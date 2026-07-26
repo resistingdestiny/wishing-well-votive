@@ -116,12 +116,12 @@ export function AquaActions({ votive, founder, positionOpen }: Props) {
         await client.readContract({ address: token as Address, abi: erc20, functionName: "decimals" }),
       );
       const amount = parseUnits(offer || "0", decimals);
-      if (amount === 0n) throw new Error("Enter how much of the principal to offer.");
+      if (amount === 0n) throw new Error("Enter how much of the principal to sell.");
       const askingAmount = parseUnits(asking || "0", decimals);
       if (askingAmount === 0n) {
         // The curve needs a reserve on both sides to quote at all. Without this a
         // position ships perfectly and can never be filled by anybody.
-        throw new Error("Enter what you are asking for it.");
+        throw new Error("Enter what you want for it.");
       }
       if (amount > (parked as bigint)) {
         throw new Error("That is more than this wish has parked.");
@@ -186,7 +186,7 @@ export function AquaActions({ votive, founder, positionOpen }: Props) {
       });
       await client.waitForTransactionReceipt({ hash });
       noteTx("aqua-position-opened", hash, {
-        detail: `${offer} offered from this wish's own principal, asking ${asking}`,
+        detail: `${offer} of this wish's own principal offered for sale, asking ${asking}`,
         contract: votive,
         subject: votive,
       });
@@ -219,7 +219,10 @@ export function AquaActions({ votive, founder, positionOpen }: Props) {
             "the fill has to be run from a script.",
         );
       }
-      setDone(`Position open. ${offer} of this wish's principal is now quotable.`);
+      setDone(
+        `Offered. ${offer} of this wish's principal is now quotable, and can be ` +
+          `bought once the frontier reaches this wish.`,
+      );
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -255,8 +258,10 @@ export function AquaActions({ votive, founder, positionOpen }: Props) {
       {positionOpen ? (
         <>
           <p className="dim" style={{ fontSize: 13 }}>
-            Closing withdraws the allowance immediately. Nothing else about the wish
-            changes — the principal has been here the whole time.
+            Part of this wish&rsquo;s principal is up for sale. Closing withdraws
+            the allowance immediately, so nothing further can be bought. Nothing
+            else about the wish changes — the principal has been here the whole
+            time.
           </p>
           <button className="btn" onClick={dock} disabled={busy !== ""}>
             {busy === "dock" ? "Closing…" : "Close the position"}
@@ -265,13 +270,22 @@ export function AquaActions({ votive, founder, positionOpen }: Props) {
       ) : (
         <>
           <p className="dim" style={{ fontSize: 13 }}>
-            Offer part of this wish&rsquo;s principal as a fillable position. The
-            money does not move: Aqua custodies nothing, and the program refuses
-            every fill until the frontier reaches this wish and the filler is an
-            agent in good standing.
+            Put part of this wish&rsquo;s principal up for sale. A buyer pays the
+            quote token into the wish and receives those principal tokens — the
+            tokens and nothing else, with no claim on the wish and nothing owed to
+            them when it settles. What they pay lands in the wish rather than in
+            your wallet; <code>recoverToken</code> is what passes it on to you.
+          </p>
+          <p className="dim" style={{ fontSize: 13 }}>
+            You fix the price now, but nobody can fill it until the frontier has
+            reached this wish and the wish has been attested true. A buyer is
+            therefore backing the view that the capability arrives at all, at a
+            price agreed long before it does. The wish holds its principal until
+            the instant of a fill, so nothing is custodied, and only a
+            human-backed agent in good standing can fill.
           </p>
           <label className="field">
-            <span>How much of the principal to offer</span>
+            <span>How much of the principal to sell</span>
             <input
               value={offer}
               onChange={(e) => setOffer(e.target.value)}
@@ -280,7 +294,7 @@ export function AquaActions({ votive, founder, positionOpen }: Props) {
             />
           </label>
           <label className="field">
-            <span>What you are asking for it</span>
+            <span>What you want for it</span>
             <input
               value={asking}
               onChange={(e) => setAsking(e.target.value)}
@@ -288,9 +302,11 @@ export function AquaActions({ votive, founder, positionOpen }: Props) {
               inputMode="decimal"
             />
             <small className="dim">
-              The price the curve quotes against. You never pay this token — a
-              filler pays it to the wish — but without it the position could never
-              be filled at all.
+              The two figures together are the price: 60 offered against 120 asked
+              quotes about two of the quote token per unit of principal, and less
+              than that on a large fill as the curve moves. You never pay the quote
+              token yourself — a buyer pays it — but the curve cannot quote at all
+              without a figure here.
             </small>
           </label>
           <button
@@ -298,7 +314,7 @@ export function AquaActions({ votive, founder, positionOpen }: Props) {
             onClick={ship}
             disabled={busy !== "" || offer === "" || asking === ""}
           >
-            {busy === "ship" ? "Opening…" : "Offer this wish as a position"}
+            {busy === "ship" ? "Opening…" : "Offer the principal for sale"}
           </button>
         </>
       )}
