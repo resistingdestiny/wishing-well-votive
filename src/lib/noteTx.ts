@@ -19,6 +19,7 @@ export type TxKind =
   | "faucet-drawn"
   | "commons-drawn"
   | "resource-granted"
+  | "resource-access-requested"
   | "conduct-reported"
   | "aqua-position-opened"
   | "aqua-position-closed"

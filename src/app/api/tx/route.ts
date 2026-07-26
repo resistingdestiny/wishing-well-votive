@@ -43,6 +43,10 @@ const KNOWN = {
     track: "world" as const,
     what: "A shared resource was granted (credential released off-chain)",
   },
+  "resource-access-requested": {
+    track: "world" as const,
+    what: "An agent claimed its entitlement to a shared resource",
+  },
   "aqua-position-opened": {
     track: "aqua" as const,
     what: "A wish offered part of its own principal as a position",
