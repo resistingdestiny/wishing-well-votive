@@ -146,6 +146,18 @@ model AquaStrategy {
   tokenB       String
   chain        String   @default("base-sepolia")
   shippedTx    String?
+  /// The shipped program bytes, hex.
+  ///
+  /// Aqua keys a strategy on the *hash* of its order, so the chain never stores
+  /// the program itself — which means nobody but the founder could reconstruct
+  /// the order well enough to fill it. Keeping the bytes here is what makes a
+  /// position takeable by a stranger.
+  ///
+  /// It is a convenience, never an authority: anything reading this must hash
+  /// the reconstructed order and check it against the votive's own
+  /// `strategyHash()` before signing anything. A wrong row then fails closed
+  /// instead of putting a bad order in front of somebody.
+  program      String?
   createdAt    DateTime @default(now())
 
   @@index([chain])

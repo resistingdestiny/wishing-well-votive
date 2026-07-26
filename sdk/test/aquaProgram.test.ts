@@ -60,3 +60,57 @@ test('the order is the one flag a votive needs and nothing else', async () => {
   assert.equal(order.traits, 1n << 254n);
   assert.equal(order.data, '0xabcd');
 });
+
+/**
+ * The taker side of a fill, pinned against Solidity.
+ *
+ * These three strings are what `TakerTraitsLib.build` actually printed for the
+ * browser filler's exact arguments — see `aqua/script/PrintTakerTraits.s.sol`.
+ * They are not a second reading of the bit table. Two readings of a spec agree
+ * with each other far more often than either agrees with the code, and a wrong
+ * bit here does not fail loudly: it produces a fill that reverts somewhere deep
+ * in the VM, or one that succeeds on terms the screen never showed.
+ */
+test('taker traits encode exactly as the Solidity library does', async () => {
+  const {buildTakerTraits} = await import('../../src/lib/aquaProgram.ts');
+
+  // No floor: every slice index is zero, so the whole head is the flag word.
+  // 0x61 = exactIn | firstTransferFromTaker | transferFromAndAquaPush.
+  assert.equal(
+    buildTakerTraits(),
+    '0x00000000000000000000000000000000000000000061',
+  );
+
+  // With a floor the threshold occupies 32 bytes, so every index from it
+  // onwards is 0x0020 — each slice ends where everything before it ended.
+  assert.equal(
+    buildTakerTraits({minAmountOut: 15_000000000000000000n}),
+    '0x00200020002000200020002000200020002000200061' +
+      '000000000000000000000000000000000000000000000000d02ab486cedc0000',
+  );
+
+  assert.equal(
+    buildTakerTraits({minAmountOut: 1n}),
+    '0x00200020002000200020002000200020002000200061' +
+      '0000000000000000000000000000000000000000000000000000000000000001',
+  );
+});
+
+/**
+ * The flag combination is the whole reason a person can fill from a wallet.
+ *
+ * A wallet cannot implement the pre-transfer callback the test taker pays
+ * through, so the callback bits must stay clear and the transferFrom+push path
+ * must stay set. If this ever flips, filling silently becomes contracts-only.
+ */
+test('the filler path needs no callback contract', async () => {
+  const {buildTakerTraits} = await import('../../src/lib/aquaProgram.ts');
+  const flags = parseInt(buildTakerTraits().slice(-4), 16);
+
+  assert.equal(flags & 0x0004, 0, 'pre-transfer-in callback must be off');
+  assert.equal(flags & 0x0008, 0, 'pre-transfer-out callback must be off');
+  assert.equal(flags & 0x0040, 0x0040, 'transferFrom + Aqua push must be on');
+  // The fee is pulled from the maker in the token coming in, so the quote has
+  // to arrive before it is taken.
+  assert.equal(flags & 0x0020, 0x0020, 'taker leg must settle first');
+});

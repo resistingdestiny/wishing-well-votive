@@ -191,3 +191,68 @@ export function encodeStrategy(order: AquaOrder): Hex {
     [order],
   );
 }
+
+// ---------------------------------------------------------------- taker side
+
+/**
+ * `TakerTraitsLib.build`, for the one shape a person filling from a browser uses.
+ *
+ * A wallet is not a contract, so it cannot implement the pre-transfer callback
+ * the test taker uses to pay. `useTransferFromAndAquaPush` is the path that
+ * exists for exactly this: the router pulls the quote token from the taker with
+ * a plain `transferFrom` and pushes it to the maker through Aqua, so all the
+ * filler needs is an ERC-20 approval to the router.
+ *
+ * `isFirstTransferFromTaker` orders the legs taker→maker first. That is not a
+ * preference: the performance fee is pulled from the maker in the token coming
+ * in, so the quote has to have arrived before the fee is taken or the pull finds
+ * nothing there.
+ *
+ * Every byte of this is checked against the Solidity library in
+ * `sdk/test/aquaProgram.test.ts` rather than reasoned about. A wrong bit here
+ * does not fail loudly — it produces a fill that reverts deep inside the VM, or
+ * worse, one that succeeds on different terms than the screen promised.
+ */
+const TAKER_FLAGS = {
+  isExactIn: 0x0001,
+  shouldUnwrap: 0x0002,
+  hasPreTransferInCallback: 0x0004,
+  hasPreTransferOutCallback: 0x0008,
+  isStrictThreshold: 0x0010,
+  isFirstTransferFromTaker: 0x0020,
+  useTransferFromAndAquaPush: 0x0040,
+} as const;
+
+export interface TakerOptions {
+  /** Least principal the filler will accept, or `undefined` for no floor. */
+  minAmountOut?: bigint;
+}
+
+/**
+ * The 22-byte traits word plus its data tail, as `swap` expects it.
+ *
+ * The first 20 bytes are ten uint16 slice indexes — cumulative end offsets into
+ * the tail. With only a threshold present, every index from the threshold
+ * onwards is 32, because each one is the end of everything before it.
+ */
+export function buildTakerTraits(options: TakerOptions = {}): Hex {
+  const hasThreshold = options.minAmountOut !== undefined;
+  const end = hasThreshold ? 32n : 0n;
+
+  // index0 ends the threshold slice; every later slice is empty and so ends at
+  // the same place.
+  let slices = 0n;
+  for (let i = 0n; i < 10n; i++) slices |= end << (i * 16n);
+
+  const flags =
+    TAKER_FLAGS.isExactIn |
+    TAKER_FLAGS.isFirstTransferFromTaker |
+    TAKER_FLAGS.useTransferFromAndAquaPush;
+
+  const head = (slices << 16n) | BigInt(flags);
+  const parts: Hex[] = [`0x${head.toString(16).padStart(44, "0")}` as Hex];
+  if (hasThreshold) {
+    parts.push(`0x${options.minAmountOut!.toString(16).padStart(64, "0")}` as Hex);
+  }
+  return concat(parts);
+}

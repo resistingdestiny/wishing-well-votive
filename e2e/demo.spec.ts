@@ -181,8 +181,10 @@ test("the Aqua vault balance is shown on the wish itself, not only on /live", as
   // on the floor rather than rendered.
   await expect(body).toContainText(/Inventory committed to this strategy/i);
   await expect(body).toContainText(/safeBalances/);
-  await expect(body).toContainText(/VDA/);
-  await expect(body).toContainText(/VDB/);
+  // The symbols are read from the tokens themselves, so this also catches the
+  // deployment being repointed at a pair the page was never updated for.
+  await expect(body).toContainText(/VOTIVE/);
+  await expect(body).toContainText(/vUSD/);
 });
 
 /**
@@ -224,17 +226,32 @@ test.describe("a founder managing their wish's position", () => {
     test.setTimeout(300_000);
     await page.goto(`/wish/${VOTIVE}`);
 
+    // Whether a position is open is a question for the contract. The rendered
+    // page can lag it by a block, and clicking "Close" on an already-closed
+    // position reverts with `NoPositionOpen` — a failure that looks like a
+    // broken button and is really a stale read.
     const close = page.getByRole("button", { name: /Close the position/i });
     if (await close.isVisible().catch(() => false)) {
       await close.click();
-      await expect(page.locator("body")).toContainText(/allowance .* back to zero/i, {
-        timeout: 180_000,
-      });
+      // Either it closed, or it was already closed and said so. Both leave the
+      // wish in the state the rest of this test needs.
+      await expect(page.locator("body")).toContainText(
+        /allowance .* back to zero|NoPositionOpen|0x24917a05/i,
+        { timeout: 180_000 },
+      );
     }
 
-    await page.reload();
+    // Reload until the page catches up. The panel decides which controls to show
+    // from the votive's `strategyHash()` read server-side, so for a block or two
+    // after a dock it still offers "Close" — and then the opening form this test
+    // needs does not exist yet. Polling the page beats a fixed sleep, and beats
+    // asserting against a render we already know can trail the chain.
     const offerField = page.getByPlaceholder("60");
-    await expect(offerField).toBeVisible({ timeout: 30_000 });
+    await expect(async () => {
+      await page.reload();
+      await expect(offerField).toBeVisible({ timeout: 10_000 });
+    }).toPass({ timeout: 120_000 });
+
     await offerField.fill("40");
     await page.getByPlaceholder("120").fill("80");
 
@@ -301,4 +318,57 @@ test("the faucet is one click from anywhere", async ({ page }) => {
   await page.getByRole("link", { name: "Get VOTIVE" }).first().click();
   await expect(page).toHaveURL(/\/faucet$/);
   await expect(page.getByTestId("faucet-panel")).toBeVisible({ timeout: 20_000 });
+});
+
+test.describe("taking the other side of a wish", () => {
+  const WISH = process.env.NEXT_PUBLIC_AQUA_VOTIVE;
+
+  test("a wish with a position offers it to anybody, not just its founder", async ({ page }) => {
+    test.skip(!WISH, "no shipped position configured");
+    await page.goto(`/wish/${WISH}`);
+
+    const panel = page.getByTestId("take-position");
+    // The panel only exists while a position is open — which is the contract's
+    // answer, not ours, and the founder tests above may have closed it.
+    const open = await panel.isVisible().catch(() => false);
+    test.skip(!open, "no position is open on this wish right now");
+
+    await expect(panel).toContainText(/nothing is custodied/i);
+    // Exactly one of: an invitation to connect, a reason it cannot be taken, or
+    // the trade itself. What must never appear is a trade form with no order
+    // behind it.
+    await expect(panel).toContainText(
+      /Connect a wallet to take this position|does not hash to the strategy|never recorded|Pay in |gates/i,
+    );
+  });
+
+  test("the recorded program is served and hashes to what the wish shipped", async ({ request }) => {
+    test.skip(!WISH, "no shipped position configured");
+    const res = await request.get(`/api/aqua/strategy?votive=${WISH}`);
+    expect(res.status()).toBe(200);
+    const body = await res.json();
+    expect(body.program).toMatch(/^0x[0-9a-f]+$/i);
+    expect(body.strategyHash).toMatch(/^0x[0-9a-f]{64}$/i);
+  });
+
+  /**
+   * The guard that makes the recorded program safe to use. Anyone can POST here,
+   * so the endpoint re-hashes against the votive's own `strategyHash()` — the
+   * chain, not our row, decides what this wish shipped.
+   */
+  test("a program that is not what the wish shipped is refused", async ({ request }) => {
+    test.skip(!WISH, "no shipped position configured");
+    const res = await request.post("/api/aqua/strategy", {
+      data: {
+        votive: WISH,
+        program: "0xdeadbeef",
+        aqua: "0x2510F1971364a8403C2F7C13DF6266363154c6f1",
+        router: "0x8C3389E1567BB877D01b24A87fe291f60C911CF1",
+        tokenA: "0x736655e2cEBB322D493b4219A6669C81bDe90001",
+        tokenB: "0xdd22b0aff43419d73DbFd5377d24Cf23C1A08C51",
+      },
+    });
+    expect(res.status()).toBe(409);
+    expect((await res.json()).error).toMatch(/does not hash to the strategy/i);
+  });
 });

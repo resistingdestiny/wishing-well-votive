@@ -12,9 +12,10 @@ import {
   RESOLVER_KIND,
 } from "@/lib/chain";
 import { prisma } from "@/lib/db";
-import { readAquaPosition } from "@/lib/aquaPosition";
+import { explainBlocker, readAquaPosition } from "@/lib/aquaPosition";
 import { AquaPanel } from "@/app/AquaPanel";
 import { AquaActions } from "./AquaActions";
+import { TakePosition } from "./TakePosition";
 import { amount, shortAddr, days, wishTag, usdEquivalent } from "@/lib/format";
 import { OwnerActions } from "./OwnerActions";
 import { OnchainHistory } from "./OnchainHistory";
@@ -141,6 +142,19 @@ export default async function WishDetail({
           votive={cell.address}
           founder={cell.wisher}
           positionOpen={Boolean(aquaPosition?.open)}
+        />
+        {/* Everybody else's half. The founder opens and closes; anyone at all
+            takes the other side, which is the point of a wish being tradable
+            rather than a box that has to be waited out. */}
+        <TakePosition
+          votive={cell.address}
+          positionOpen={Boolean(aquaPosition?.open)}
+          fillable={Boolean(aquaPosition?.fillable)}
+          blockerText={
+            aquaPosition && aquaPosition.blocker !== "none"
+              ? explainBlocker(aquaPosition.blocker)
+              : undefined
+          }
         />
       </div>
       <div
