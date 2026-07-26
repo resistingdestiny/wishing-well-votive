@@ -51,6 +51,10 @@ const KNOWN = {
     track: "aqua" as const,
     what: "A wish closed its position and withdrew the allowance",
   },
+  "aqua-position-filled": {
+    track: "aqua" as const,
+    what: "Somebody took the other side of a wish, and its principal moved",
+  },
   "conduct-reported": {
     track: "world" as const,
     what: "A conduct report was filed against an operator",

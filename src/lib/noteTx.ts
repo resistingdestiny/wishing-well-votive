@@ -22,6 +22,7 @@ export type TxKind =
   | "conduct-reported"
   | "aqua-position-opened"
   | "aqua-position-closed"
+  | "aqua-position-filled"
   | "bounty-posted"
   | "milestone-released"
   | "earnings-withdrawn";

@@ -190,6 +190,35 @@ export function AquaActions({ votive, founder, positionOpen }: Props) {
         contract: votive,
         subject: votive,
       });
+
+      // Keep the program bytes where a stranger can find them. Aqua stores only
+      // the order's hash, so without this nobody but whoever built the order can
+      // reconstruct it — and a position nobody can reconstruct is a position
+      // nobody can take. The endpoint re-hashes and refuses anything that is not
+      // what this votive actually shipped, so the chain stays the authority.
+      const recorded = await fetch("/api/aqua/strategy", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          votive,
+          program,
+          aqua: AQUA,
+          router: ROUTER,
+          tokenA: token,
+          tokenB: QUOTE,
+          shippedTx: hash,
+        }),
+      }).catch(() => null);
+      if (!recorded?.ok) {
+        // Said out loud rather than swallowed. The position is open either way —
+        // that part is on chain — but only the founder could fill it, and a
+        // position nobody can take looks exactly like one nobody wants.
+        setError(
+          "The position is open, but its program could not be recorded, so nobody " +
+            "else can reconstruct the order to fill it. Close and reopen it, or " +
+            "the fill has to be run from a script.",
+        );
+      }
       setDone(`Position open. ${offer} of this wish's principal is now quotable.`);
     } catch (e) {
       setError((e as Error).message);
