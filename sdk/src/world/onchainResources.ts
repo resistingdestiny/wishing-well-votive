@@ -128,9 +128,28 @@ export interface ReleaseCheck {
   explanation: string;
 }
 
+/** `ResourceRegistry.Grant`, as `grantOf` returns it. */
+export interface OnchainGrant {
+  resourceId: `0x${string}`;
+  /** The human the quota was metered against. */
+  humanId: `0x${string}`;
+  /** The wallet that asked. Zero when no such grant exists. */
+  wallet: `0x${string}`;
+  issuedAt: number;
+  expiresAt: number;
+}
+
 export interface CredentialIssuer {
-  /** Called only once the chain has said the grant is still releasable. */
-  (grant: {grantId: string; resourceId: string; wallet: string}): Promise<string>;
+  /**
+   * Called only once the chain has said the grant is still releasable, and only
+   * with identity the chain itself supplied.
+   */
+  (grant: {
+    grantId: string;
+    resourceId: string;
+    wallet: string;
+    humanId: string;
+  }): Promise<string>;
 }
 
 export interface ProviderOptions {
@@ -138,23 +157,39 @@ export interface ProviderOptions {
   registry: string;
   issue: CredentialIssuer;
   /** Called on every release decision. Never receives the credential. */
-  onRelease?: (record: {grantId: string; released: boolean; reason: ResourceRefusal}) => void;
+  onRelease?: (record: {
+    grantId: string;
+    released: boolean;
+    reason: ResourceRefusal;
+    /** As the registry recorded it, not as anyone claimed it. */
+    resourceId: string;
+    wallet: string;
+  }) => void;
 }
 
 export interface ResourceProvider {
   /** Ask the chain whether this grant may still be honoured. */
   check(grantId: string): Promise<ReleaseCheck>;
+  /** What the registry recorded this grant to be. */
+  grant(grantId: string): Promise<OnchainGrant>;
   /**
    * Check, and if the chain still says yes, mint and return the credential.
    *
    * Returns null rather than throwing on a refusal, because a provider handling a
    * queue of grants should be able to skip one without unwinding the batch.
+   *
+   * @param context Ignored, and kept only so existing callers still compile.
+   *                Which resource and which wallet a grant is for is read from
+   *                the registry — see the note on this function's implementation.
    */
   release(
     grantId: string,
-    context: {resourceId: string; wallet: string}
+    context?: {resourceId?: string; wallet?: string}
   ): Promise<string | null>;
 }
+
+const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
+const ZERO_WORD = `0x${'0'.repeat(64)}`;
 
 export function createResourceProvider(options: ProviderOptions): ResourceProvider {
   async function check(grantId: string): Promise<ReleaseCheck> {
@@ -166,17 +201,55 @@ export function createResourceProvider(options: ProviderOptions): ResourceProvid
     return {releasable, reason, explanation: explainRefusal(reason)};
   }
 
+  async function grant(grantId: string): Promise<OnchainGrant> {
+    const data = RESOURCE_SELECTORS.grantOf + encodeWord(grantId);
+    const raw = (await options.read({to: options.registry, data})).replace(/^0x/, '');
+
+    // Five static members, so the struct is encoded in place — no head offset to
+    // follow. An empty return decodes to a zero grant, which is what a registry
+    // that has never seen this id would mean.
+    const word = (i: number): string => raw.slice(i * 64, (i + 1) * 64).padStart(64, '0');
+    return {
+      resourceId: `0x${word(0)}`,
+      humanId: `0x${word(1)}`,
+      wallet: `0x${word(2).slice(24)}` as `0x${string}`,
+      issuedAt: Number(decodeUint(`0x${word(3)}`)),
+      expiresAt: Number(decodeUint(`0x${word(4)}`)),
+    };
+  }
+
   return {
     check,
+    grant,
 
-    async release(grantId, context) {
+    async release(grantId) {
       const verdict = await check(grantId);
-      options.onRelease?.({grantId, released: verdict.releasable, reason: verdict.reason});
-      if (!verdict.releasable) return null;
+
+      // Who the grant is for comes from the registry, never from whoever handed
+      // us the id. `AccessGranted` is a public event, so a grant id is public
+      // knowledge; a provider that scoped the credential to a caller-supplied
+      // wallet would mint one identity's entitlement under another's name, and
+      // `isGrantReleasable` would have said yes the whole time — it validates the
+      // grant's *stored* wallet and never sees the claim.
+      const record = verdict.releasable ? await grant(grantId) : null;
+
+      options.onRelease?.({
+        grantId,
+        released: verdict.releasable,
+        reason: verdict.reason,
+        resourceId: record?.resourceId ?? ZERO_WORD,
+        wallet: record?.wallet ?? ZERO_ADDRESS,
+      });
+      if (!verdict.releasable || !record) return null;
 
       // Minted last, and only here. A refused grant never causes a credential to
       // exist, so there is nothing to revoke afterwards.
-      return options.issue({grantId, resourceId: context.resourceId, wallet: context.wallet});
+      return options.issue({
+        grantId,
+        resourceId: record.resourceId,
+        wallet: record.wallet,
+        humanId: record.humanId,
+      });
     },
   };
 }

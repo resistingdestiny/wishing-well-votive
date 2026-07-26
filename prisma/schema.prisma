@@ -123,6 +123,252 @@ model ChainTx {
   @@index([createdAt])
 }
 
+/// An agent that may earn on the protocol, and the human standing behind it.
+///
+/// The row is deliberately thin. It holds what only we know — a display name, a
+/// summary, whether the operator has switched the agent off — and nothing that
+/// the chain is the authority on. In particular there is **no `humanId` and no
+/// `assurance` column**, even though both would be convenient to index on.
+///
+/// The reason is the invariant `txLog` states: state is read, never written. The
+/// attestor can revoke a backing and the ledger can bar a human without this
+/// application being involved, and a cached `humanId` would keep painting a green
+/// "verified" badge on a wallet the chain had already disowned. Verification is
+/// therefore read live from `humanOf` / `assuranceOf` / `isBarred` on every page
+/// that shows it. What *is* stored is the verification attempt itself, in
+/// `AgentVerification` — that is history, and history does not go stale.
+model Agent {
+  id          String    @id @default(cuid())
+  /// Lowercase hex. Normalised at the route boundary, because `Watch` and
+  /// `Story` disagree about casing today and that has already cost one bug.
+  wallet      String    @unique
+  /// Who administers the agent. Defaults to `wallet`; separate so the address
+  /// doing the work can stop being the address authorised to rotate its key.
+  ownerWallet String
+  displayName String
+  summary     String
+  /// "active" | "disabled"
+  status      String    @default("active")
+  createdAt   DateTime  @default(now())
+  disabledAt  DateTime?
+
+  keys          AgentKey[]
+  verifications AgentVerification[]
+  submissions   Submission[]
+
+  @@index([ownerWallet])
+}
+
+/// One issued agent secret.
+///
+/// A table rather than a pair of columns on `Agent` for two reasons. Rotation has
+/// to overlap: a long-running agent is redeployed with a new key while the old
+/// one is still serving requests, and a single-key column forces a gap in which
+/// the agent is locked out of its own work. And the lockout counters below need
+/// somewhere to live that is per credential — locking an *agent* because one
+/// stale deployment is presenting a revoked key would take a working agent down.
+///
+/// The secret itself is not here and cannot be recovered from what is. `keyHash`
+/// is HMAC-SHA-256 over `salt ‖ secret` under a pepper held only in the
+/// environment, so this table on its own — dumped, backed up, or leaked — does
+/// not let anyone confirm a guessed key, let alone reverse one.
+model AgentKey {
+  id      String @id @default(cuid())
+  agentId String
+  agent   Agent  @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  /// 16 hex characters. Public: it names the row, it does not open it.
+  keyId       String @unique
+  /// base64 of HMAC-SHA-256(pepper, salt ‖ secret).
+  keyHash     String
+  /// base64 of 16 random bytes.
+  salt        String
+  /// Which scheme produced `keyHash`, so the scheme can be changed without a
+  /// flag day: a new version lands beside the old and rows migrate on next use.
+  hashVersion String @default("hmac-sha256-v1")
+  label       String
+
+  createdAt  DateTime  @default(now())
+  lastUsedAt DateTime?
+  revokedAt  DateTime?
+
+  /// Consecutive wrong secrets since the last consequence. Reset on success and
+  /// on lockout — it measures the current run, not the lifetime.
+  failedAttempts Int       @default(0)
+  lastFailedAt   DateTime?
+  lockedUntil    DateTime?
+  /// Lifetime lockouts. Never reset: this is what makes each lock longer than
+  /// the last, which is what turns a patient search into an impractical one.
+  lockouts       Int       @default(0)
+
+  @@index([agentId])
+}
+
+/// A wallet signature we asked for, and what came back.
+///
+/// Every privileged act by a human — registering an agent, asking for a key,
+/// revoking one, verifying with World, casting a vote — is authorised by signing
+/// a challenge minted here. The nonce is unique and single-use, and it is stamped
+/// consumed **on presentation rather than on success**, so a signature that fails
+/// verification cannot be retried against the same nonce.
+///
+/// It doubles as the verification audit trail. `outcome` distinguishes the three
+/// World results that must never be conflated: a wallet with no human behind it,
+/// a lookup we could not perform, and a successful attestation. Collapsing the
+/// middle one into the first is how a page ends up telling someone they are not a
+/// person when in fact an RPC endpoint was down.
+model AgentVerification {
+  id      String  @id @default(cuid())
+  agentId String?
+  /// `SetNull` and not `Cascade`: deleting an agent must not erase the record of
+  /// what was verified about a wallet, which is exactly the thing a dispute needs.
+  agent   Agent?  @relation(fields: [agentId], references: [id], onDelete: SetNull)
+
+  /// Lowercase.
+  wallet  String
+  /// "register" | "verify-world" | "issue-key" | "revoke-key" | "vote"
+  purpose String
+  /// What the challenge is *about*: a submission id, a key id, "approve".
+  subject String?
+
+  /// base64url of 16 random bytes. Single use.
+  nonce      String    @unique
+  issuedAt   DateTime
+  expiresAt  DateTime
+  consumedAt DateTime?
+
+  /// issued | signature-failed | no-human | unreachable | attested |
+  /// rebind-refused | tx-reverted | ok
+  outcome String @default("issued")
+
+  signature String?
+
+  /// What AgentBook returned, and the bytes32 our registry keys on. Both, because
+  /// the mapping is one-way: keeping only the digest makes it impossible to ever
+  /// explain to a person which identifier of theirs it came from.
+  humanIdRaw     String?
+  humanIdOnChain String?
+  assurance      Int?
+  evidenceHash   String?
+  attestTx       String?
+  attestedAt     DateTime?
+  failureReason  String?
+
+  createdAt DateTime @default(now())
+
+  @@index([wallet, purpose])
+  @@index([expiresAt])
+}
+
+/// An agent claiming it did something, or asking for what it needs to.
+///
+/// One model for both categories rather than two, because they share the entire
+/// mechanic: an agent posts under its own secret, the community may object, and
+/// silence approves. `kind` is the only thing that differs, and it decides which
+/// columns are required — `railAddress` / `bountyId` for a solution, `resourceId`
+/// / `resourceKind` for a request.
+///
+/// **There is no `status` column, deliberately.** Status here is a function of
+/// the vote tally, the clock, and what the chain currently says — and this repo
+/// has no scheduler of any kind, so a stored status is a status nothing would
+/// ever flip. It is derived at read time from `decidesAt` and the votes instead.
+/// `decidesAt` itself *is* stored and never recomputed: it is the promise made to
+/// the agent at submission time, and recomputing it would let a change in policy
+/// silently move a deadline somebody was relying on.
+model Submission {
+  id      String @id @default(cuid())
+  /// "solution" | "resource-request"
+  kind    String
+  agentId String
+  agent   Agent  @relation(fields: [agentId], references: [id])
+  /// Snapshotted at submit, lowercase. The agent's wallet can be rotated; which
+  /// wallet made *this* claim cannot be allowed to change afterwards.
+  agentWallet String
+
+  /// Lowercase votive address.
+  wish         String?
+  /// Lowercase. Required when kind = "solution".
+  railAddress  String?
+  bountyId     Int?
+  /// Decimal string. Wei does not fit in a JS number and must not be rounded.
+  amountWei    String?
+  /// bytes32 for an on-chain resource, or a toolbelt slug.
+  resourceId   String?
+  /// "onchain" | "toolbelt" | "capital"
+  resourceKind String?
+
+  title String
+  body  String
+  /// 0x + 64 hex. The commitment the milestone is derived from.
+  resultHash String?
+
+  submittedAt DateTime @default(now())
+  decidesAt   DateTime
+  contestedAt DateTime?
+  settledAt   DateTime?
+
+  /// Two hashes and not one: attestation and release are separate transactions,
+  /// and the gap between them is a real state. If the attestation lands and the
+  /// release reverts, the attestation still stands and anyone may finish the job
+  /// — which is only resumable if we recorded that it happened.
+  attestTxHash  String?
+  releaseTxHash String?
+  reportTxHash  String?
+
+  votes SubmissionVote[]
+
+  /// One claim per milestone per rail. The database half of the on-chain
+  /// `milestoneReleased` guard, so a duplicate is refused before it costs gas.
+  @@unique([railAddress, bountyId, resultHash])
+  @@index([kind, decidesAt])
+  @@index([wish])
+  @@index([agentId])
+}
+
+/// One human's objection or assent, weighted by their standing at the time.
+///
+/// Keyed on `humanId` and not on the wallet, because a wallet is free and a
+/// verified human is not: `@@unique([submissionId, humanId])` is the entire Sybil
+/// defence for the tally, and keying on the voter address instead would let one
+/// person vote once per wallet they hold.
+///
+/// `weightBps`, `assurance` and `readAtBlock` are snapshotted here, which is the
+/// one deliberate exception to "state is read, never written" in this schema. The
+/// exception is justified because a vote is a past act: it was cast with the
+/// weight the chain gave that human at that block, and re-reading their standing
+/// at settlement would let somebody barred on day three silently rewrite a tally
+/// from day one. `readAtBlock` is what makes the snapshot checkable by anyone.
+model SubmissionVote {
+  id           String     @id @default(cuid())
+  submissionId String
+  submission   Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+
+  /// bytes32 hex.
+  humanId String
+  /// Lowercase wallet that produced the signature.
+  voter   String
+  /// "approve" | "reject"
+  choice  String
+
+  /// Decimal string of basis points.
+  weightBps   String
+  assurance   Int
+  readAtBlock String
+
+  /// Required when choice = "reject" — an objection nobody has to justify is an
+  /// objection nobody can answer.
+  reason   String?
+  /// `StandingLedger.Category`, set only when a rejection is being escalated
+  /// towards a conduct report. Never enough on its own to file one.
+  category Int?
+
+  signature String
+  createdAt DateTime @default(now())
+
+  @@unique([submissionId, humanId])
+  @@index([submissionId])
+}
+
 /// An Aqua position shipped for a votive.
 ///
 /// Recorded when the strategy is shipped, for the same reason transactions are:

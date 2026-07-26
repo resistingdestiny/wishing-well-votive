@@ -8,6 +8,7 @@ import {AgentStandingAdapter} from "../src/world/AgentStandingAdapter.sol";
 import {AssuranceTiers} from "../src/world/AssuranceTiers.sol";
 import {CommonsPool} from "../src/world/CommonsPool.sol";
 import {HumanBackingRegistry} from "../src/world/HumanBackingRegistry.sol";
+import {ResourceRegistry} from "../src/world/ResourceRegistry.sol";
 import {StandingLedger} from "../src/world/StandingLedger.sol";
 import {Script} from "forge-std/Script.sol";
 import {console} from "forge-std/console.sol";
@@ -51,6 +52,7 @@ contract DeployWorld is Script {
         address commonsPool;
         address accessGate;
         address bountyRail;
+        address resourceRegistry;
     }
 
     /// @dev Grouped rather than kept as a dozen locals. Solidity runs out of stack
@@ -104,6 +106,15 @@ contract DeployWorld is Script {
         HumanBackedAccessGate gate =
             new HumanBackedAccessGate(cfg.owner, humanRegistry, ledger, cfg.minAssurance);
         AgentBountyRail rail = new AgentBountyRail(IAttestationRegistry(cfg.attestations), adapter);
+        // The resource commons reads standing straight off the ledger, not through
+        // the adapter: it asks about a human's bar and multiplier, questions the
+        // ledger answers itself. The adapter exists to translate a *wallet* for a
+        // rail and to hold the recorder role; a registry keyed to humans needs
+        // neither. Its epoch is the same window as the commons for one operational
+        // reason — an operator's day should mean the same thing to their money
+        // allowance and to their resource quota, or explaining either one drifts.
+        ResourceRegistry resources =
+            new ResourceRegistry(cfg.owner, humanRegistry, ledger, cfg.epoch);
 
         // The permissions that make the parts one system. Only the owner can grant
         // them, so when the owner is somebody else these are reported rather than
@@ -127,7 +138,8 @@ contract DeployWorld is Script {
             standingAdapter: address(adapter),
             commonsPool: address(commons),
             accessGate: address(gate),
-            bountyRail: address(rail)
+            bountyRail: address(rail),
+            resourceRegistry: address(resources)
         });
 
         _report(out, cfg, wired);
@@ -149,6 +161,7 @@ contract DeployWorld is Script {
         console.log("  CommonsPool            %s", out.commonsPool);
         console.log("  HumanBackedAccessGate  %s", out.accessGate);
         console.log("  AgentBountyRail        %s", out.bountyRail);
+        console.log("  ResourceRegistry       %s", out.resourceRegistry);
         console.log("  ------------------------------------------------------");
         console.log("  owner                  %s", owner);
         console.log("  attestor               %s", attestor);
@@ -164,6 +177,15 @@ contract DeployWorld is Script {
             console.log("  Until then no outcome is recorded and standing never moves.");
             console.log("");
         }
+
+        // The resource registry deploys empty on purpose: which resources exist,
+        // and what each demands, is a decision per deployment rather than something
+        // to bake into the layer's construction. Populate it with
+        // `script/RegisterResources.s.sol`, whose slug→id derivation is pinned to
+        // the app's `src/core/skills/resourceId.ts` so the two halves cannot drift.
+        console.log("  TO REGISTER RESOURCES, run against %s:", out.resourceRegistry);
+        console.log("    forge script script/RegisterResources.s.sol:RegisterResources");
+        console.log("");
 
         // Swapping the factory's gate is deliberately never done automatically. It
         // changes who may open a votive on a live deployment, and that is a decision

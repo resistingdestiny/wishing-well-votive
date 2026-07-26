@@ -18,6 +18,7 @@
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "prepare": "npm run build",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "node --test --experimental-strip-types test/*.test.ts",
     "pretest": "tsc -p tsconfig.json"

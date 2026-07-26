@@ -165,6 +165,10 @@ export async function strategyFor(
 ): Promise<StrategyRecord | null> {
   const row = await prisma.aquaStrategy
     .findFirst({
+      // Checksummed, to match how `api/aqua/strategy` both writes and reads the
+      // column (`getAddress` on POST and GET). Querying the lowercased form here
+      // matched nothing — every stored row is checksummed — so the per-wish read
+      // came up empty while `/live`, which passes no filter, found them all.
       ...(votive ? { where: { votive: getAddress(votive) } } : {}),
       orderBy: { createdAt: "desc" },
     })
