@@ -16,6 +16,7 @@ import { explainBlocker, readAquaPosition } from "@/lib/aquaPosition";
 import { AquaPanel } from "@/app/AquaPanel";
 import { AquaActions } from "./AquaActions";
 import { TakePosition } from "./TakePosition";
+import { SolvePanel } from "./SolvePanel";
 import { amount, shortAddr, days, wishTag, usdEquivalent } from "@/lib/format";
 import { OwnerActions } from "./OwnerActions";
 import { OnchainHistory } from "./OnchainHistory";
@@ -109,6 +110,10 @@ export default async function WishDetail({
 
   const { registry } = chainConfig();
   let resolverBinding: { kind: string; met: boolean } | null = null;
+  // The capability gate, read for the same reason the condition is: the Solve
+  // panel needs to know which of the two attestations are already in place so it
+  // can skip the ones the registry has recorded rather than reverting on them.
+  let capabilityOpen = false;
   if (registry) {
     try {
       const pc = publicClient();
@@ -116,13 +121,22 @@ export default async function WishDetail({
       // pointing at a resolver contract, so there is no binding to look up first
       // — one call replaces two, and there is no "bound but unmet" state to
       // represent because an unattested condition simply reads false.
-      const met = (await pc.readContract({
-        address: registry,
-        abi: registryAbi,
-        functionName: "isConditionMet",
-        args: [cell.address, cell.conditionHash],
-      })) as boolean;
+      const [met, capOpen] = await Promise.all([
+        pc.readContract({
+          address: registry,
+          abi: registryAbi,
+          functionName: "isConditionMet",
+          args: [cell.address, cell.conditionHash],
+        }) as Promise<boolean>,
+        pc.readContract({
+          address: registry,
+          abi: registryAbi,
+          functionName: "isCapabilityOpen",
+          args: [cell.capabilityId],
+        }) as Promise<boolean>,
+      ]);
       resolverBinding = { kind: "attested condition", met };
+      capabilityOpen = capOpen;
     } catch {
       resolverBinding = null;
     }
@@ -156,6 +170,19 @@ export default async function WishDetail({
               : undefined
           }
         />
+        {/* Only a Waiting wish can be solved: the gate has to be openable, the
+            condition attestable, and the cell in the one state from which
+            beginAttempt → fulfil is legal. Every later state has already
+            resolved. */}
+        {cell.state === 1 ? (
+          <SolvePanel
+            votive={cell.address}
+            capabilityId={cell.capabilityId}
+            conditionHash={cell.conditionHash}
+            capabilityOpen={capabilityOpen}
+            conditionMet={Boolean(resolverBinding?.met)}
+          />
+        ) : null}
       </div>
       <div
         className={`wishHero${cell.state === 3 || cell.state === 6 ? " fulfilled" : ""}`}

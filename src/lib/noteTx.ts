@@ -23,6 +23,10 @@ export type TxKind =
   | "aqua-position-opened"
   | "aqua-position-closed"
   | "aqua-position-filled"
+  | "capability-attested"
+  | "condition-attested"
+  | "attempt-begun"
+  | "wish-fulfilled"
   | "bounty-posted"
   | "milestone-released"
   | "earnings-withdrawn";
