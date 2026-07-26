@@ -5,6 +5,7 @@ import path from "node:path";
 import { enforceRateLimit } from "@/lib/rateLimit";
 import { prisma } from "@/lib/db";
 import { StorySchemaZ, type EvalSpec } from "@/core/schema/story";
+import { mockParse } from "@/core/schema/mockParse";
 import { compileEval } from "@/core/evals/harness";
 import {
   resolveClient,
@@ -128,8 +129,29 @@ export async function POST(req: Request) {
       .catch(() =>
         prisma.story.findUnique({ where: { cell: votive.toLowerCase() } }).catch(() => null),
       );
-    const story = row ? StorySchemaZ.safeParse(row.parsed) : null;
-    if (!story || !story.success) {
+    if (!row) {
+      return NextResponse.json({ error: "no story recorded for this wish" }, { status: 404 });
+    }
+    let story = StorySchemaZ.safeParse(row.parsed);
+    if (!story.success && process.env.WELL_MOCK_LLM === "1" && row.prose) {
+      // A registration that half-landed: the prose is here (and was verified
+      // against the cell's own story hash when it was stored) but the parsed
+      // schema is not. Under the mock parser the mapping is deterministic, so
+      // regenerate it from the prose rather than refusing — and backfill the
+      // row so the next caller doesn't repeat the work.
+      try {
+        const regenerated = mockParse(row.prose, row.wisher);
+        story = StorySchemaZ.safeParse(regenerated);
+        if (story.success) {
+          await prisma.story
+            .update({ where: { cell: row.cell ?? votive }, data: { parsed: regenerated as object } })
+            .catch(() => {});
+        }
+      } catch {
+        // fall through to the 404 below
+      }
+    }
+    if (!story.success) {
       return NextResponse.json({ error: "no story recorded for this wish" }, { status: 404 });
     }
     const spec = story.data.capability.eval;

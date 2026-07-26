@@ -10,6 +10,7 @@ import {
   type ParsedStory,
 } from "@/core/schema/story";
 import { resolveClient } from "@/core/llm/client";
+import { mockParse } from "@/core/schema/mockParse";
 import { ModelRegistry } from "@/core/models/registry";
 import path from "node:path";
 
@@ -18,35 +19,6 @@ const BodySchema = z.object({
   prose: z.string().min(10).max(2_000),
   wisher: z.string().regex(/^0x[0-9a-fA-F]{40}$/),
 });
-
-function mockParse(prose: string, wisher: string): ParsedStory {
-  const wantsDistribute = /distribut|share|everyone|all wishers/i.test(prose);
-  const wantsAction = /\baction\b|\bdo\b|write|build|send/i.test(prose);
-  const kind = wantsDistribute
-    ? "distribute-to-active"
-    : wantsAction
-      ? "offchain-action"
-      : "return-on-condition";
-  return StorySchemaZ.parse({
-    kind,
-    wisher,
-    capability: {
-      summary: `Mock capability for: ${prose.slice(0, 60)}`,
-      eval: {
-        type: "qa",
-        question: "What is 2+2?",
-        expected: "4",
-        matcher: "exact",
-      },
-    },
-    condition: {
-      summary: "Trivially true (mock parse)",
-      canonical: "always-true",
-    },
-    amendPolicy: { amendAfterDays: 365, escheatAfterDays: 1825 },
-    actionBudgetWei: "0",
-  });
-}
 
 export async function POST(req: Request) {
 
