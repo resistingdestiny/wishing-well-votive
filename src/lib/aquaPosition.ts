@@ -10,7 +10,7 @@
  * the VM asks, and the balances of the same Aqua contract that custodies them, so
  * what this page says and what a fill would actually do cannot drift apart.
  */
-import { createPublicClient, http, parseAbi, type Chain } from "viem";
+import { createPublicClient, getAddress, http, parseAbi, type Chain } from "viem";
 import { prisma } from "@/lib/db";
 import { explorerAddress } from "@/lib/txLog";
 
@@ -165,7 +165,11 @@ export async function strategyFor(
 ): Promise<StrategyRecord | null> {
   const row = await prisma.aquaStrategy
     .findFirst({
-      ...(votive ? { where: { votive: votive.toLowerCase() } } : {}),
+      // Checksummed, to match how `api/aqua/strategy` both writes and reads the
+      // column (`getAddress` on POST and GET). Querying the lowercased form here
+      // matched nothing — every stored row is checksummed — so the per-wish read
+      // came up empty while `/live`, which passes no filter, found them all.
+      ...(votive ? { where: { votive: getAddress(votive) } } : {}),
       orderBy: { createdAt: "desc" },
     })
     .catch(() => null);
