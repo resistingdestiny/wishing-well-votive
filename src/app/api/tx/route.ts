@@ -59,6 +59,10 @@ const KNOWN = {
     track: "aqua" as const,
     what: "Somebody took the other side of a wish, and its principal moved",
   },
+  "capability-attested": { track: "votive" as const, what: "Capability gate opened" },
+  "condition-attested": { track: "votive" as const, what: "Release condition attested" },
+  "attempt-begun": { track: "votive" as const, what: "Attempt begun" },
+  "wish-fulfilled": { track: "votive" as const, what: "Wish fulfilled — paid out" },
   "conduct-reported": {
     track: "world" as const,
     what: "A conduct report was filed against an operator",
