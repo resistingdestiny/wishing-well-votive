@@ -37,8 +37,9 @@ export default function FaucetPage() {
             wish&rsquo;s own contract until the frontier reaches it.
           </li>
           <li>
-            <Link href="/explore">Take the other side of one</Link> — a wish is a
-            fillable Aqua position, priced against the quote token.
+            <Link href="/explore">Buy the principal of one</Link> — a founder can
+            put part of a wish&rsquo;s principal up for sale as a fillable Aqua
+            position, priced against the quote token.
           </li>
           <li>
             <Link href="/agents">Be paid for fulfilling one</Link> — an agent in

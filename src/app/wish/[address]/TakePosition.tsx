@@ -65,17 +65,19 @@ interface Props {
 }
 
 /**
- * Taking the other side of a wish.
+ * Buying into a wish.
  *
- * A wish may be waiting on a capability that arrives in a decade. The founder
- * should not have to wait it out to get their money back, and somebody who
- * thinks the frontier will move sooner should be able to say so with money. That
- * is the whole argument for a wish being a position rather than a locked box.
+ * A wish can be waiting on a capability that is years away, and its holder should
+ * not have to wait it out. This is the secondary market: pay in, and part of the
+ * wish is yours, paid out of the wish when it comes true.
  *
- * What happens when you fill: you pay the quote token in, and a slice of the
- * wish's own principal comes out, priced on the curve against the reserves the
- * founder set. Nothing is custodied by us or by Aqua at any point — the wish
- * holds its principal until the instant of the fill.
+ * What moves the price is the odds. The curve prices against the reserves the
+ * founder set, and every trade walks it — so a wish that looks nearer to coming
+ * true gets dearer, and one that looks further off gets cheaper. That is the
+ * instrument: a long-dated claim, repriced continuously as the frontier moves.
+ *
+ * Nothing is custodied by us or by Aqua at any point. The wish holds everything
+ * until the instant of a trade, when the transfer happens directly.
  *
  * **The order is reconstructed and then checked against the chain before
  * anything is signed.** Aqua stores only the order's hash, so the program bytes
@@ -275,8 +277,9 @@ export function TakePosition({ votive, positionOpen, fillable, blockerText }: Pr
         subject: votive,
       });
       setDone(
-        `Filled. You paid ${amount} ${loaded.quote.symbol} and took ` +
-          `${formatUnits(out, loaded.principal.decimals)} ${loaded.principal.symbol} of this wish's principal.`,
+        `Bought. You paid ${amount} ${loaded.quote.symbol} and now hold ` +
+          `${formatUnits(out, loaded.principal.decimals)} ${loaded.principal.symbol} of this wish. ` +
+          `Hold it until the wish comes true, or sell it on as the odds move.`,
       );
       setAmount("");
       await load();
@@ -292,12 +295,19 @@ export function TakePosition({ votive, positionOpen, fillable, blockerText }: Pr
   return (
     <div className="panel stack hoverable" style={{ marginTop: 14 }} data-testid="take-position">
       <div>
-        <h3 style={{ margin: 0 }}>Take the other side</h3>
+        <h3 style={{ margin: 0 }}>Buy into this wish</h3>
         <p className="muted" style={{ margin: "0.3rem 0 0" }}>
-          This wish is a position, not a locked box. Pay the quote token in and a
-          slice of the wish&rsquo;s own principal comes out, priced on the curve
-          against the reserves its founder set. The wish holds its principal the
-          entire time — nothing is custodied here or by Aqua.
+          Pay in, and part of this wish comes to you — you take on that share of
+          what it is worth, and you are paid out of it when the wish comes true.
+          A wish can be waiting years, so its holder does not have to wait it out:
+          the position is tradable at any point along the way.
+        </p>
+        <p className="muted" style={{ margin: "0.3rem 0 0" }}>
+          What it costs moves with the odds. As AI gets closer to what the wish is
+          waiting for, the wish becomes likelier to pay and the price rises; when
+          it looks further off, the price falls. Buying early is the cheaper bet
+          and the longer wait. The wish holds everything until the moment of a
+          trade — nothing is custodied here or by Aqua.
         </p>
       </div>
 

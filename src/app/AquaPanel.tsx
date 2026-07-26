@@ -41,7 +41,10 @@ export function AquaPanel({ position }: { position: AquaPosition | null }) {
         </span>
       </h2>
       <p className="dim" style={{ fontSize: 13, marginTop: 0 }}>
-        A wish as a position somebody else can take the other side of. Priced by{" "}
+        A wish is a long-dated position, and this is where it changes hands. Its
+        holder is paid out of the wish when it comes true, so the price tracks how
+        likely that looks: it rises as the frontier closes in, and falls as the
+        wish looks further off. Priced by{" "}
         {position.opcodeCount} SwapVM instructions appended to the official set at
         index {position.opcodeBase} — nothing official is replaced, so a program
         the Aqua SDK encodes runs here byte-identically.
