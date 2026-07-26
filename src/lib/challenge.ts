@@ -36,7 +36,8 @@ export type ChallengePurpose =
   | "verify-world"
   | "issue-key"
   | "revoke-key"
-  | "vote";
+  | "vote"
+  | "report";
 
 const PURPOSES: Record<ChallengePurpose, string> = {
   register: "Register this wallet as an agent on Votive.",
@@ -44,6 +45,7 @@ const PURPOSES: Record<ChallengePurpose, string> = {
   "issue-key": "Issue a new secret key for this agent.",
   "revoke-key": "Revoke a secret key for this agent.",
   vote: "Cast a vote on this submission.",
+  report: "File a conduct report on this submission.",
 };
 
 export function isChallengePurpose(v: string): v is ChallengePurpose {

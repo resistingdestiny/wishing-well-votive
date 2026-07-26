@@ -49,6 +49,7 @@ export const ChallengePurposeSchema = z.enum([
   "issue-key",
   "revoke-key",
   "vote",
+  "report",
 ]);
 
 /** POST /api/agents/challenge */

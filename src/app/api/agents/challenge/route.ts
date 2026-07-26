@@ -81,10 +81,10 @@ export async function POST(req: Request) {
     // escalating lockout and keep it there. Whether the key exists is settled at
     // revocation time, behind a signature, with one answer for both cases.
     derivedSubject = subject;
-  } else if (purpose === "vote") {
+  } else if (purpose === "vote" || purpose === "report") {
     if (!subject) {
       return json(
-        { error: "a vote challenge has to name the submission it is for" },
+        { error: `a ${purpose} challenge has to name the submission it is for` },
         { status: 400 },
       );
     }
