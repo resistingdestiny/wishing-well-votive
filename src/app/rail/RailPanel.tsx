@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { useAccount, usePublicClient, useWriteContract } from "wagmi";
 import { formatEther, isAddress, keccak256, parseAbi, parseEther, stringToHex, type Address } from "viem";
 import { hederaChain } from "@/lib/wagmi";
@@ -75,7 +75,7 @@ const ZERO = "0x0000000000000000000000000000000000000000";
  *   - earnings are credited, not pushed, so one withdrawal collects however
  *     many milestones it came from.
  */
-export function RailPanel() {
+export function RailPanel({ standingGate }: { standingGate?: ReactNode }) {
   const { address, isConnected, chain } = useAccount();
   const client = usePublicClient();
   const { writeContractAsync } = useWriteContract();
@@ -92,6 +92,11 @@ export function RailPanel() {
   const [task, setTask] = useState("");
   const [reward, setReward] = useState("");
   const [votive, setVotive] = useState("");
+  // The two windows were hardcoded here; they are the funder's to set. Defaults
+  // match the old constants — 6h to claim, 7d before an unearned reward is
+  // refundable — so leaving them alone changes nothing.
+  const [claimHours, setClaimHours] = useState("6");
+  const [lifetimeDays, setLifetimeDays] = useState("7");
 
   const refresh = useCallback(async () => {
     if (!client || !RAIL) return;
@@ -178,6 +183,18 @@ export function RailPanel() {
       const forVotive = (votive.trim() || ZERO) as Address;
       if (!isAddress(forVotive)) throw new Error("That wish address is not an address.");
 
+      // The two windows are the funder's to set, within sane bounds. The claim
+      // window has to be shorter than the lifetime — a claim that outlived the
+      // refund would let an agent sit on a bounty past the point the funder could
+      // reclaim it, which is the exact deadlock exclusivity exists to prevent.
+      const claimWindow = BigInt(Math.round(Number(claimHours) * Number(HOUR)));
+      const lifetime = BigInt(Math.round(Number(lifetimeDays) * Number(DAY)));
+      if (claimWindow <= 0n) throw new Error("The claim window has to be some hours.");
+      if (lifetime <= 0n) throw new Error("The lifetime has to be some days.");
+      if (claimWindow >= lifetime) {
+        throw new Error("The claim window must be shorter than the lifetime, or an agent could sit on the reward past the refund.");
+      }
+
       // The description lives off chain; only its hash is escrowed against, so
       // the task can be published anywhere and still be provably the same task.
       const taskHash = keccak256(stringToHex(task.trim()));
@@ -185,7 +202,7 @@ export function RailPanel() {
         address: RAIL,
         abi: railAbi,
         functionName: "postBounty",
-        args: [forVotive, taskHash, taskHash, HOUR * 6n, DAY * 7n],
+        args: [forVotive, taskHash, taskHash, claimWindow, lifetime],
         value,
         chainId: hederaChain.id,
       });
@@ -301,6 +318,12 @@ export function RailPanel() {
               <Field label="For which wish (optional)">
                 <input value={votive} onChange={(e) => setVotive(e.target.value)} placeholder="0x…" data-testid="rail-votive" />
               </Field>
+              <Field label="Claim window (hours)">
+                <input type="number" min="1" step="1" value={claimHours} onChange={(e) => setClaimHours(e.target.value)} data-testid="rail-claim-hours" />
+              </Field>
+              <Field label="Lifetime (days)">
+                <input type="number" min="1" step="1" value={lifetimeDays} onChange={(e) => setLifetimeDays(e.target.value)} data-testid="rail-lifetime-days" />
+              </Field>
               <button onClick={post} disabled={busy !== ""} data-testid="rail-post">
                 {busy === "post" ? "Escrowing…" : "Escrow it"}
               </button>
@@ -312,10 +335,16 @@ export function RailPanel() {
               <h3 style={{ margin: 0 }}>Be paid as an agent</h3>
               <p className="muted" style={{ margin: "0.3rem 0 0" }}>
                 Register where you are paid, claim a task exclusively, and collect
-                once an attested milestone releases. Standing is checked when you
-                take work on, not when you are paid for it — an agent barred after
-                delivering has still delivered.
+                once an attested milestone releases. Whether standing is checked when
+                you take work on depends on this rail, so it is read from the rail
+                rather than asserted here:
               </p>
+              {standingGate ?? (
+                <p className="muted" style={{ margin: "0.3rem 0 0", fontSize: "0.85rem" }}>
+                  Whether this rail gates claims on standing has not been checked on
+                  this page.
+                </p>
+              )}
             </div>
             <div className="fieldRow">
               <Field label="Payout address (blank = this wallet)">

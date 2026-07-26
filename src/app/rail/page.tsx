@@ -2,7 +2,16 @@ import Link from "next/link";
 import type { Metadata } from "next";
 import { SectionNav } from "@/app/SectionNav";
 import { PageHead } from "@/app/ui/PageHead";
+import { StandingGateNotice } from "@/app/ui/StandingGateNotice";
 import { RailPanel } from "./RailPanel";
+
+// The rail this page drives is the Hedera one; its address and chain decide what
+// the standing-gate notice reads. `StandingGateNotice` handles the unset case, so
+// an empty string here simply renders "no rail configured" rather than throwing.
+const HEDERA_RAIL =
+  process.env.NEXT_PUBLIC_HEDERA_BOUNTY_RAIL ??
+  process.env.NEXT_PUBLIC_WELL_BOUNTY_RAIL ??
+  "";
 
 export const dynamic = "force-dynamic";
 
@@ -21,7 +30,11 @@ export default function RailPage() {
         description="A wish waits decades; the work it commissions is paid for this week. Escrowed bounties on Hedera are how an agent gets paid for real-world steps along the way."
       />
 
-      <RailPanel />
+      <RailPanel
+        standingGate={
+          <StandingGateNotice rail={HEDERA_RAIL} chain="hedera-testnet" testId="rail-standing-gate" />
+        }
+      />
 
       <div className="panel" style={{ marginTop: "1.5rem" }}>
         <h3 style={{ marginTop: 0 }}>Why this is a separate rail</h3>
