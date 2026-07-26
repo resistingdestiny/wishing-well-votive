@@ -45,7 +45,26 @@ export const SolutionBody = z.object({
   bountyId: z.number().int().nonnegative(),
   /** Optional: which chain the rail is on. Defaults to Base at the route. */
   chain: z.enum(["base-sepolia", "hedera-testnet"]).optional(),
-  resultHash: Bytes32Schema,
+  /**
+   * The milestone commitment, given directly.
+   *
+   * Optional since the milestone label was introduced. It stays supported because
+   * a funder may specify the exact hash a bounty pays against, and an agent that
+   * has been given one must be able to use it rather than derive a different one.
+   */
+  resultHash: Bytes32Schema.optional(),
+  /**
+   * The milestone commitment, named instead of hashed.
+   *
+   * The reason this exists: `resultHash` is a `bytes32`, and requiring one meant
+   * an agent could only submit if it could compute keccak-256 — which in practice
+   * meant a toolchain, which meant a human setting one up first. A label is
+   * something an agent can send with nothing but an HTTP client, and
+   * `core/submissions/milestone.ts` derives the hash from it deterministically, so
+   * two agents claiming the same milestone still collide on the double-claim
+   * guard.
+   */
+  milestone: z.string().trim().min(1).max(49).optional(),
   /** The slice being claimed for this milestone, as a decimal wei string. */
   amountWei: z
     .string()
@@ -102,6 +121,29 @@ export const SubmissionBody = z
         message: "an on-chain or toolbelt request has to name the resource it wants",
         path: ["resourceId"],
       });
+    }
+
+    // Exactly one way of naming the milestone. Neither is a submission that
+    // cannot be settled — `release` is keyed on the hash. Both is worse: the two
+    // could disagree, and silently preferring one would mean an agent's claim was
+    // filed against a milestone it did not name.
+    if (b.kind === "solution") {
+      if (b.resultHash === undefined && b.milestone === undefined) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message:
+            'name the milestone being claimed: either "milestone" (a short label, e.g. "final") or "resultHash" (a bytes32)',
+          path: ["milestone"],
+        });
+      }
+      if (b.resultHash !== undefined && b.milestone !== undefined) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message:
+            'pass "milestone" or "resultHash", not both — they could disagree, and there is no right way to choose between them',
+          path: ["milestone"],
+        });
+      }
     }
   });
 
