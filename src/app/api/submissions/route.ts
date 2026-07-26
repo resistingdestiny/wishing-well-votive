@@ -72,6 +72,19 @@ export async function POST(req: Request) {
     if (bounty.value.total <= bounty.value.paid) {
       return fail("that bounty has already paid out its whole balance", 409);
     }
+    // The rail refuses `release` for a bounty nobody has claimed, and credits only
+    // the agent who claimed it. Both are knowable now, so refuse now — otherwise
+    // the claim sails through its window and settlement reverts `NothingClaimed`
+    // days later, against a clock nobody can rewind.
+    if (bounty.value.agent === "0x0000000000000000000000000000000000000000") {
+      return fail(
+        "that bounty has not been claimed on-chain — claim() it on the rail as this agent first",
+        409,
+      );
+    }
+    if (bounty.value.agent.toLowerCase() !== agent.wallet.toLowerCase()) {
+      return fail("that bounty is claimed on-chain by a different agent", 409);
+    }
 
     try {
       const row = await prisma.submission.create({
