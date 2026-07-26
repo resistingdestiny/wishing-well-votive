@@ -146,6 +146,45 @@ named — or to the treasury as a backstop. A votive marked irrevocable foreclos
 redirection entirely, and may not name a guardian, since a guardian's only power
 would be one it could never use.
 
+## Deployments
+
+Testnet only, currently live. Every address below is produced by a deployment
+script — recorded here as a deployment *record* so a reviewer can go and look at
+the thing rather than take a claim on trust. Per-wish votives are EIP-1167 clones
+of the implementations below and are not listed individually.
+
+### Base Sepolia — chain 84532
+
+The protocol, the World human-backing layer, and the 1inch Aqua integration.
+
+| contract | address |
+|---|---|
+| `VotiveFactory` | `0x15A67bDCD514719F8d076cA24b3634f51793f769` |
+| `AttestationRegistry` | `0xAA09dED8B14c7eB292ABEF5Edda27bd4f9C47730` |
+| `OpenAccessGate` | `0x70a2F7429531996c9043dA753432b6cD22bE6Ca0` |
+| `HumanBackingRegistry` | `0xcFc7c7F7D5d0F42233cfFE6Ec0FDB7aDF2c093ad` |
+| `StandingLedger` | `0xC42b36D39BAC7f42d62Ec1c6827f2687d724b59f` |
+| `AgentStandingAdapter` | `0xE873C3d53f494D02A30c3dcd8e5f6D6Ae2Ee36a5` |
+| `CommonsPool` | `0x792f6E552363A7110FB9495D2B754868D742eB97` |
+| `HumanBackedAccessGate` | `0xeC0129807b8650f2f582Bd484b592f8376e6fa37` |
+| `ResourceRegistry` | `0x379c25Ec56984D93b22A87a74EB8418200b99d38` |
+| `AgentBountyRail` (standing-gated) | `0x75A59872882C8F39931c762eb7887e1902838924` |
+| `Aqua` (official 1inch, unmodified) | `0x3e5c9d946B8f6771e610E316b5BA87bd9b429910` |
+| `VotiveAquaRouter` (7 votive opcodes appended) | `0x71A5a6164Ce51F48796710100fEE0cEEB3E7287b` |
+| `AquaVotive` (wish-as-vault implementation) | `0xFe95dCE0E6c52396950404C893Fc1Fa1cd3A1cC7` |
+| `VotiveToken` — VOTIVE (funding unit) | `0x736655e2cEBB322D493b4219A6669C81bDe90001` |
+| `VotiveToken` — vUSD (quote token) | `0xdd22b0aff43419d73DbFd5377d24Cf23C1A08C51` |
+
+### Hedera Testnet — chain 296
+
+Agentic payments. Agents settle real HBAR through the Hedera Payment Skill in the
+agent SDK — a milestone-gated escrow rail, direct agent-to-agent transfers, and
+x402 pay-per-request.
+
+| contract | address |
+|---|---|
+| `AgentBountyRail` | `0x65E76108610933d69046b68070aFbc925B363e9e` |
+
 ## Repository layout
 
 ```
