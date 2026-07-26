@@ -6,6 +6,7 @@ import { contractLinks, operatorStanding, votivePositions } from "@/lib/protocol
 import { recentTxs, type RecordedTx, type TxTrack } from "@/lib/txLog";
 import { readAquaPosition } from "@/lib/aquaPosition";
 import { AquaPanel } from "@/app/AquaPanel";
+import { PartnerRails } from "./PartnerRails";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -241,6 +242,9 @@ export default async function LivePage() {
       })}
 
       <AquaPanel position={aqua} />
+
+      {/* ---------------------------------------------- partner rails, live */}
+      <PartnerRails />
 
       {/* ------------------------------------------------------- addresses */}
       <section style={{ marginBottom: 24 }}>
