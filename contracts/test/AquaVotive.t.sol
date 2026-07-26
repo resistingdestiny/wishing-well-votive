@@ -368,5 +368,4 @@ contract AquaVotiveTest is VotiveTest {
             "a closed position must leave no standing allowance in either token"
         );
     }
-
 }
