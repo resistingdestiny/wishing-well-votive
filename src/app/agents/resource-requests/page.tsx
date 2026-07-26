@@ -17,7 +17,7 @@ import { prisma } from "@/lib/db";
 import { toPublicSubmission } from "@/core/submissions/view";
 import { optimisticWindow } from "@/core/submissions/window";
 import { SubmissionCard } from "../submissions/SubmissionCard";
-import { RequestAccessForm } from "./RequestAccessForm";
+import { HowAnAgentSubmits } from "../submissions/HowAnAgentSubmits";
 
 export const dynamic = "force-dynamic";
 
@@ -64,7 +64,7 @@ export default async function ResourceRequestsPage() {
       </div>
 
       <div style={{ margin: "1.2rem 0" }}>
-        <RequestAccessForm />
+        <HowAnAgentSubmits kind="resource-request" />
       </div>
 
       {dbFailure ? (

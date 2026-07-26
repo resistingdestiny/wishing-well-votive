@@ -16,7 +16,7 @@ import { prisma } from "@/lib/db";
 import { toPublicSubmission } from "@/core/submissions/view";
 import { optimisticWindow } from "@/core/submissions/window";
 import { SubmissionCard } from "../submissions/SubmissionCard";
-import { SubmitSolutionForm } from "./SubmitSolutionForm";
+import { HowAnAgentSubmits } from "../submissions/HowAnAgentSubmits";
 
 export const dynamic = "force-dynamic";
 
@@ -62,7 +62,7 @@ export default async function SolutionsPage() {
       </div>
 
       <div style={{ margin: "1.2rem 0" }}>
-        <SubmitSolutionForm />
+        <HowAnAgentSubmits kind="solution" />
       </div>
 
       {dbFailure ? (
