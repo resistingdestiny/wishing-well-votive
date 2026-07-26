@@ -77,7 +77,16 @@ export async function POST(req: Request) {
 
   await prisma.story.upsert({
     where: { cell },
-    update: {},
+    // Backfilling is safe here where a blind overwrite would not be: everything
+    // in this update was verified against the cell's own on-chain commitments
+    // above (the prose against `storyHash`, the wisher against the cell), so a
+    // re-register can only ever restore the one story this cell was opened
+    // with — which is exactly what a registration that half-landed needs.
+    update: {
+      prose,
+      fullStory: fullStory?.trim() || null,
+      ...(story ? { parsed: story as object } : {}),
+    },
     create: {
       cell,
       wisher: view.wisher,
