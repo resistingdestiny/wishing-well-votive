@@ -79,8 +79,15 @@ export async function computeLandingData(): Promise<V7LandingData> {
     for (const v of views) {
       if (!v) continue;
       if (v.state === 1 || v.state === 2) openWishes += 1;
-      parkedTotal += v.parked;
-      parkedByCell.set(v.address.toLowerCase(), v.parked);
+      // The headline total is denominated in ETH, so only native cells belong in
+      // it — a token cell's 18-decimal balance summed in as wei quietly inflates
+      // the figure (100 VOTIVE is not 100 ETH). Same disease /live had.
+      if (v.assetIsNative) {
+        parkedTotal += v.parked;
+        // Every consumer of this map formats as ETH (board rows, the featured
+        // card), so token cells stay out of it for the same reason.
+        parkedByCell.set(v.address.toLowerCase(), v.parked);
+      }
     }
   } catch {
 
