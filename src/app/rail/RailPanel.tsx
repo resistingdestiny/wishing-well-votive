@@ -3,9 +3,11 @@
 import { useCallback, useEffect, useState } from "react";
 import { useAccount, usePublicClient, useWriteContract } from "wagmi";
 import { formatEther, isAddress, keccak256, parseAbi, parseEther, stringToHex, type Address } from "viem";
-import { appChain } from "@/lib/wagmi";
+import { hederaChain } from "@/lib/wagmi";
+import { ChainGuard } from "@/app/ui/ChainGuard";
 import { Field } from "@/app/ui/Field";
 import { noteTx } from "@/lib/noteTx";
+import { walletError } from "@/lib/walletError";
 
 const railAbi = parseAbi([
   "function registerAgent(address payout)",
@@ -145,7 +147,7 @@ export function RailPanel() {
       await fn();
       await refresh();
     } catch (e) {
-      setError((e as Error).message.slice(0, 300));
+      setError(walletError(e));
     } finally {
       setBusy("");
     }
@@ -161,7 +163,7 @@ export function RailPanel() {
         abi: railAbi,
         functionName: "registerAgent",
         args: [to],
-        chainId: appChain.id,
+        chainId: hederaChain.id,
       });
       await client?.waitForTransactionReceipt({ hash });
       setNote(`Registered. Earnings will be credited to ${to}.`);
@@ -185,7 +187,7 @@ export function RailPanel() {
         functionName: "postBounty",
         args: [forVotive, taskHash, taskHash, HOUR * 6n, DAY * 7n],
         value,
-        chainId: appChain.id,
+        chainId: hederaChain.id,
       });
       await client?.waitForTransactionReceipt({ hash });
       noteTx("bounty-posted", hash, {
@@ -206,7 +208,7 @@ export function RailPanel() {
         abi: railAbi,
         functionName: "claim",
         args: [id],
-        chainId: appChain.id,
+        chainId: hederaChain.id,
       });
       await client?.waitForTransactionReceipt({ hash });
       setNote(`Bounty #${id} is yours exclusively until the claim window lapses.`);
@@ -220,7 +222,7 @@ export function RailPanel() {
         abi: railAbi,
         functionName: "withdraw",
         args: [],
-        chainId: appChain.id,
+        chainId: hederaChain.id,
       });
       await client?.waitForTransactionReceipt({ hash });
       noteTx("earnings-withdrawn", hash, { chain: "hedera-testnet", contract: RAIL, subject: address });
@@ -269,6 +271,16 @@ export function RailPanel() {
         <p className="muted">Connect a wallet to post or claim.</p>
       ) : (
         <>
+          {/* The rail is the one thing here that is not on Base Sepolia, so this
+              is where a visitor is most likely to be on the wrong network — and
+              the reads above will already have failed for the same reason. */}
+          <ChainGuard
+            chainId={hederaChain.id}
+            chainName={hederaChain.name}
+            action="use the payments rail"
+          >
+            <span />
+          </ChainGuard>
           <div className="panel stack hoverable">
             <div>
               <h3 style={{ margin: 0 }}>Post a bounty</h3>

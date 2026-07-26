@@ -337,4 +337,36 @@ contract AquaVotiveTest is VotiveTest {
         assertEq(a, 0);
         assertEq(b, 0);
     }
+
+    /// @dev The performance fee is pulled from this contract in the token coming
+    ///      *in*, not the one going out. Approving only the principal meant every
+    ///      fill above the fee threshold reverted — and reverted only at
+    ///      execution, because a quote runs static and skips the pull. The screen
+    ///      priced it, the wallet signed it, and the chain refused it.
+    function test_theQuoteTokenIsApprovedSoTheFeeCanBeTaken() public {
+        _configure();
+        _ship(60e18); // helper asks 2x the offer
+
+        assertEq(
+            quoteToken.allowance(address(votive), address(aqua)),
+            120e18,
+            "the fee is taken in the quote token, so Aqua must be able to move it"
+        );
+    }
+
+    /// Closing must retract both allowances, not just the one it granted first.
+    function test_dockingWithdrawsTheQuoteAllowanceToo() public {
+        _configure();
+        _ship(60e18);
+        vm.prank(founder);
+        votive.dockFromAqua();
+
+        assertEq(fundingToken.allowance(address(votive), address(aqua)), 0);
+        assertEq(
+            quoteToken.allowance(address(votive), address(aqua)),
+            0,
+            "a closed position must leave no standing allowance in either token"
+        );
+    }
+
 }

@@ -17,10 +17,37 @@ export const appChain: Chain = {
     : {}),
 };
 
+/**
+ * The payments rail lives on Hedera, not on the chain the rest of the app uses.
+ *
+ * It has to be declared here or `switchChain` cannot offer it: wagmi will only
+ * switch to a chain in its own config, so without this the rail's controls fail
+ * with a wallet error that names no network and suggests no remedy.
+ */
+const hederaRpc = process.env.NEXT_PUBLIC_HEDERA_RPC_URL;
+const hederaId = Number(process.env.NEXT_PUBLIC_HEDERA_CHAIN_ID ?? 296);
+
+export const hederaChain: Chain = {
+  id: hederaId,
+  name: "Hedera Testnet",
+  nativeCurrency: { name: "HBAR", symbol: "HBAR", decimals: 18 },
+  rpcUrls: { default: { http: [hederaRpc ?? "https://testnet.hashio.io/api"] } },
+  blockExplorers: { default: { name: "HashScan", url: "https://hashscan.io/testnet" } },
+};
+
+/** True only when the rail is actually deployed for this environment. */
+export const HAS_HEDERA_RAIL =
+  typeof process.env.NEXT_PUBLIC_HEDERA_BOUNTY_RAIL === "string" &&
+  /^0x[0-9a-fA-F]{40}$/.test(process.env.NEXT_PUBLIC_HEDERA_BOUNTY_RAIL);
+
 export const wagmiConfig = createConfig({
-  chains: [appChain],
+  // A tuple, because wagmi types `chains` as non-empty.
+  chains: hederaChain.id === appChain.id ? [appChain] : [appChain, hederaChain],
   connectors: [injected()],
-  transports: { [appChain.id]: http(rpcUrl) },
+  transports: {
+    [appChain.id]: http(rpcUrl),
+    [hederaChain.id]: http(hederaRpc ?? "https://testnet.hashio.io/api"),
+  },
 });
 
 export const FACTORY_ADDRESS = process.env.NEXT_PUBLIC_WELL_FACTORY as

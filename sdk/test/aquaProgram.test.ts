@@ -110,7 +110,8 @@ test('the filler path needs no callback contract', async () => {
   assert.equal(flags & 0x0004, 0, 'pre-transfer-in callback must be off');
   assert.equal(flags & 0x0008, 0, 'pre-transfer-out callback must be off');
   assert.equal(flags & 0x0040, 0x0040, 'transferFrom + Aqua push must be on');
-  // The fee is pulled from the maker in the token coming in, so the quote has
-  // to arrive before it is taken.
+  // Taker leg first, so a maker that cannot deliver fails before the taker's
+  // money has moved. (Not, as first written here, to fund the fee: the whole
+  // program including the fee pull runs before either transfer leg.)
   assert.equal(flags & 0x0020, 0x0020, 'taker leg must settle first');
 });

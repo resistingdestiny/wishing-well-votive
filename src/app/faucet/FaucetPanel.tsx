@@ -4,7 +4,9 @@ import { useCallback, useEffect, useState } from "react";
 import { useAccount, usePublicClient, useWriteContract } from "wagmi";
 import { formatUnits, parseAbi, type Address } from "viem";
 import { appChain } from "@/lib/wagmi";
+import { ChainGuard } from "@/app/ui/ChainGuard";
 import { noteTx } from "@/lib/noteTx";
+import { walletError } from "@/lib/walletError";
 
 const faucetAbi = parseAbi([
   "function faucet()",
@@ -145,7 +147,7 @@ export function FaucetPanel() {
       );
       await refresh();
     } catch (e) {
-      setError((e as Error).message.slice(0, 300));
+      setError(walletError(e));
     } finally {
       setBusy("");
     }
@@ -213,13 +215,19 @@ export function FaucetPanel() {
               <p className="muted" style={{ margin: 0 }}>Connect a wallet to draw.</p>
             ) : (
               <div className="row" style={{ gap: "0.6rem", alignItems: "center" }}>
-                <button
-                  onClick={() => draw(t)}
-                  disabled={busy !== "" || wait !== null}
-                  data-testid={`faucet-draw-${t.symbol}`}
+                <ChainGuard
+                  chainId={appChain.id}
+                  chainName={appChain.name}
+                  action={`draw ${t.symbol}`}
                 >
-                  {busy === t.address ? "Drawing…" : `Draw ${t.symbol}`}
-                </button>
+                  <button
+                    onClick={() => draw(t)}
+                    disabled={busy !== "" || wait !== null}
+                    data-testid={`faucet-draw-${t.symbol}`}
+                  >
+                    {busy === t.address ? "Drawing…" : `Draw ${t.symbol}`}
+                  </button>
+                </ChainGuard>
                 {wait ? (
                   <span className="muted" style={{ fontSize: "0.85rem" }}>
                     You drew recently. Again in {wait}.
