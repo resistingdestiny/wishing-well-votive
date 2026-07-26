@@ -65,24 +65,19 @@ interface Props {
 }
 
 /**
- * Buying the principal a wish has put up for sale.
+ * Buying into a wish.
  *
- * What happens when you fill: you pay the quote token in, and a slice of the
- * wish's own principal comes out into your wallet, priced on the curve against
- * the reserves the founder set. Nothing is custodied by us or by Aqua at any
- * point — the wish holds its principal until the instant of the fill.
+ * A wish can be waiting on a capability that is years away, and its holder should
+ * not have to wait it out. This is the secondary market: pay in, and part of the
+ * wish is yours, paid out of the wish when it comes true.
  *
- * **A filler buys tokens, not a stake.** The program's only record of them is the
- * transfer; no instruction registers a beneficiary, so a filler holds no claim on
- * the wish and is owed nothing when it settles. The copy below has to keep saying
- * so, because "take the other side of a wish" reads like part-ownership to almost
- * everybody, and the one thing this page cannot afford is a claim that does not
- * survive being checked against the contracts.
+ * What moves the price is the odds. The curve prices against the reserves the
+ * founder set, and every trade walks it — so a wish that looks nearer to coming
+ * true gets dearer, and one that looks further off gets cheaper. That is the
+ * instrument: a long-dated claim, repriced continuously as the frontier moves.
  *
- * Note the gate ordering this sits behind: `onlyConditionMet` means a fill is
- * impossible until the wish has been attested true. So this is not an early exit
- * for the founder — it is a price fixed now and settled only if the frontier
- * actually arrives.
+ * Nothing is custodied by us or by Aqua at any point. The wish holds everything
+ * until the instant of a trade, when the transfer happens directly.
  *
  * **The order is reconstructed and then checked against the chain before
  * anything is signed.** Aqua stores only the order's hash, so the program bytes
@@ -282,9 +277,9 @@ export function TakePosition({ votive, positionOpen, fillable, blockerText }: Pr
         subject: votive,
       });
       setDone(
-        `Filled. You paid ${amount} ${loaded.quote.symbol}, and ` +
-          `${formatUnits(out, loaded.principal.decimals)} ${loaded.principal.symbol} of this wish's principal ` +
-          `is now in your wallet. It carries no claim on the wish itself.`,
+        `Bought. You paid ${amount} ${loaded.quote.symbol} and now hold ` +
+          `${formatUnits(out, loaded.principal.decimals)} ${loaded.principal.symbol} of this wish. ` +
+          `Hold it until the wish comes true, or sell it on as the odds move.`,
       );
       setAmount("");
       await load();
@@ -300,15 +295,19 @@ export function TakePosition({ votive, positionOpen, fillable, blockerText }: Pr
   return (
     <div className="panel stack hoverable" style={{ marginTop: 14 }} data-testid="take-position">
       <div>
-        <h3 style={{ margin: 0 }}>Buy this wish&rsquo;s principal</h3>
+        <h3 style={{ margin: 0 }}>Buy into this wish</h3>
         <p className="muted" style={{ margin: "0.3rem 0 0" }}>
-          The founder has put part of this wish&rsquo;s principal up for sale at a
-          price they set. Pay the quote token in and those principal tokens arrive
-          in your wallet, priced on the curve against the reserves the founder
-          chose. That is the whole of what you get: the tokens. Buying gives you no
-          claim on the wish, no say in it, and no share of what it pays out when it
-          settles. The wish holds its principal the entire time — nothing is
-          custodied here or by Aqua.
+          Pay in, and part of this wish comes to you — you take on that share of
+          what it is worth, and you are paid out of it when the wish comes true.
+          A wish can be waiting years, so its holder does not have to wait it out:
+          the position is tradable at any point along the way.
+        </p>
+        <p className="muted" style={{ margin: "0.3rem 0 0" }}>
+          What it costs moves with the odds. As AI gets closer to what the wish is
+          waiting for, the wish becomes likelier to pay and the price rises; when
+          it looks further off, the price falls. Buying early is the cheaper bet
+          and the longer wait. The wish holds everything until the moment of a
+          trade — nothing is custodied here or by Aqua.
         </p>
       </div>
 

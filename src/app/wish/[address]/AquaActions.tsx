@@ -116,7 +116,7 @@ export function AquaActions({ votive, founder, positionOpen }: Props) {
         await client.readContract({ address: token as Address, abi: erc20, functionName: "decimals" }),
       );
       const amount = parseUnits(offer || "0", decimals);
-      if (amount === 0n) throw new Error("Enter how much of the principal to sell.");
+      if (amount === 0n) throw new Error("Enter how much of this wish to sell.");
       const askingAmount = parseUnits(asking || "0", decimals);
       if (askingAmount === 0n) {
         // The curve needs a reserve on both sides to quote at all. Without this a
@@ -220,8 +220,8 @@ export function AquaActions({ votive, founder, positionOpen }: Props) {
         );
       }
       setDone(
-        `Offered. ${offer} of this wish's principal is now quotable, and can be ` +
-          `bought once the frontier reaches this wish.`,
+        `On the market. ${offer} of this wish can now be bought, at a price that ` +
+          `moves with the odds of it coming true.`,
       );
     } catch (e) {
       setError((e as Error).message);
@@ -258,10 +258,9 @@ export function AquaActions({ votive, founder, positionOpen }: Props) {
       {positionOpen ? (
         <>
           <p className="dim" style={{ fontSize: 13 }}>
-            Part of this wish&rsquo;s principal is up for sale. Closing withdraws
-            the allowance immediately, so nothing further can be bought. Nothing
-            else about the wish changes — the principal has been here the whole
-            time.
+            Part of this wish is on the market. Closing takes it off immediately,
+            so no more of it can be bought. Nothing else about the wish changes —
+            everything has been here the whole time.
           </p>
           <button className="btn" onClick={dock} disabled={busy !== ""}>
             {busy === "dock" ? "Closing…" : "Close the position"}
@@ -270,22 +269,19 @@ export function AquaActions({ votive, founder, positionOpen }: Props) {
       ) : (
         <>
           <p className="dim" style={{ fontSize: 13 }}>
-            Put part of this wish&rsquo;s principal up for sale. A buyer pays the
-            quote token into the wish and receives those principal tokens — the
-            tokens and nothing else, with no claim on the wish and nothing owed to
-            them when it settles. What they pay lands in the wish rather than in
-            your wallet; <code>recoverToken</code> is what passes it on to you.
+            Sell part of this wish. Whoever buys takes on that share of what the
+            wish is worth and is paid out of it when it comes true, so you do not
+            have to wait out a wish that may take years to get your money back.
           </p>
           <p className="dim" style={{ fontSize: 13 }}>
-            You fix the price now, but nobody can fill it until the frontier has
-            reached this wish and the wish has been attested true. A buyer is
-            therefore backing the view that the capability arrives at all, at a
-            price agreed long before it does. The wish holds its principal until
-            the instant of a fill, so nothing is custodied, and only a
-            human-backed agent in good standing can fill.
+            You set the opening price; from there it moves with the odds, rising as
+            AI closes in on what this wish is waiting for and falling as it looks
+            further off. The wish holds everything until the moment of a trade, so
+            nothing is custodied, and only a human-backed agent in good standing
+            can buy.
           </p>
           <label className="field">
-            <span>How much of the principal to sell</span>
+            <span>How much of this wish to sell</span>
             <input
               value={offer}
               onChange={(e) => setOffer(e.target.value)}
@@ -294,7 +290,7 @@ export function AquaActions({ votive, founder, positionOpen }: Props) {
             />
           </label>
           <label className="field">
-            <span>What you want for it</span>
+            <span>What you want for that share</span>
             <input
               value={asking}
               onChange={(e) => setAsking(e.target.value)}
@@ -314,7 +310,7 @@ export function AquaActions({ votive, founder, positionOpen }: Props) {
             onClick={ship}
             disabled={busy !== "" || offer === "" || asking === ""}
           >
-            {busy === "ship" ? "Opening…" : "Offer the principal for sale"}
+            {busy === "ship" ? "Listing…" : "Put this share on the market"}
           </button>
         </>
       )}
