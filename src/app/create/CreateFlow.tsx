@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   useAccount,
   useConnect,
@@ -15,6 +16,8 @@ import {
   isAddress,
   getAddress,
   decodeAbiParameters,
+  parseAbi,
+  parseEventLogs,
 } from "viem";
 import { factoryAbi, erc20Abi, toIntent, DEFAULT_DEADLINES, ANY_TERMS } from "@/lib/chain";
 import {
@@ -104,6 +107,17 @@ interface OnchainSchemaJson {
 
 const ZERO_ADDR = "0x0000000000000000000000000000000000000000" as const;
 
+/**
+ * The factory's own announcement of a new cell.
+ *
+ * Declared here rather than in the shared `factoryAbi`, which carries only the
+ * functions the read paths need. The address a founder is sent to has to come
+ * from the contract's word for it, not from our arithmetic on a log topic.
+ */
+const openedAbi = parseAbi([
+  "event VotiveOpened(address indexed votive, address indexed founder, bytes32 indexed capabilityId, address asset, uint256 principal)",
+]);
+
 interface ParsePreview {
   story: {
     kind: string;
@@ -155,6 +169,7 @@ export function CreateFlow() {
   const { switchChain } = useSwitchChain();
   const { writeContractAsync } = useWriteContract();
   const client = usePublicClient();
+  const router = useRouter();
 
   const [prose, setProse] = useState("");
   const [fullStory, setFullStory] = useState("");
@@ -172,6 +187,7 @@ export function CreateFlow() {
   >("compose");
   const [error, setError] = useState("");
   const [cellAddress, setCellAddress] = useState("");
+  const [txHash, setTxHash] = useState("");
   const [step, setStep] = useState(0);
   const [maxStep, setMaxStep] = useState(0);
   const [fundMethod, setFundMethod] = useState<"wallet" | "fiat">("wallet");
@@ -364,23 +380,33 @@ export function CreateFlow() {
         });
       }
       const receipt = await client.waitForTransactionReceipt({ hash });
-      const created = receipt.logs.find(
-        (l) => l.address.toLowerCase() === factoryAddress.toLowerCase(),
-      );
-      const cell = created?.topics[1]
-        ? `0x${created.topics[1].slice(26)}`
-        : "";
+      setTxHash(hash);
+      // Decoded from the factory's `VotiveOpened`, not sliced off the first log
+      // the factory happened to emit. The token path also puts a Transfer and the
+      // cell's own `Opened` in this receipt, so "first log at the factory address"
+      // was an assumption with nothing holding it up — and it yielded a lowercased
+      // address, which every link then carried around unchecksummed.
+      const [opened] = parseEventLogs({
+        abi: openedAbi,
+        eventName: "VotiveOpened",
+        logs: receipt.logs,
+      });
+      const cell = (opened?.args.votive ?? "") as string;
       if (cell) {
         noteTx("wish-opened", hash, {
           detail: `${amount} ${fundToken ? fundToken.symbol : "ETH"} from ${depositor}`,
           contract: factoryAddress,
           subject: cell,
         });
+        // Awaited, because the wish's page and /explore both show the story this
+        // records, and arriving before it lands makes a real wish look like a
+        // blank one. Never allowed to throw: the wish is on chain either way, and
+        // a failed bookkeeping call must not strand the founder on this form.
         await fetch("/api/register-wish", {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({ cell, prose, wisher, fullStory, parsed: preview.story }),
-        });
+        }).catch(() => {});
 
         // Nothing to bind: our registry attests a condition directly rather than
         // wiring it to a resolver contract, and attesting is the attestor's call
@@ -390,6 +416,11 @@ export function CreateFlow() {
       if (cell) addMyCell({ cell, label: prose.slice(0, 80), source: "create" });
       setPhase("done");
       goTo(3);
+      // Take them to the wish itself. Confirming the transaction and then leaving
+      // the founder on the same form they submitted reads as "nothing happened" —
+      // the panel below is only a fallback for the moment before the route
+      // resolves, and for the case where we could not name the cell.
+      if (cell) router.push(`/wish/${cell}`);
     } catch (e) {
       setError((e as Error).message);
       setPhase("preview");
@@ -746,12 +777,33 @@ export function CreateFlow() {
               Your wish is in Votive.
             </p>
           </div>
-          <p style={{ margin: 0 }}>
-            <Link href={`/wish/${cellAddress}`} className="mono">
-              {cellAddress}
-            </Link>{" "}
-            is its own segregated cell. The next capability sweep will pick it up.
-          </p>
+          {cellAddress ? (
+            <p style={{ margin: 0 }}>
+              <Link href={`/wish/${cellAddress}`} className="mono">
+                {cellAddress}
+              </Link>{" "}
+              is its own segregated cell. The next capability sweep will pick it up.
+            </p>
+          ) : (
+            // The transaction confirmed but the receipt carried no `VotiveOpened`
+            // we could read, so we do not know which cell to open. Say that and
+            // hand over the hash — a founder whose money has moved is owed
+            // something they can follow, not a link to /wish/ with nothing after it.
+            <p style={{ margin: 0 }} data-testid="create-tx-only">
+              Your funding transaction confirmed, but Votive could not read the new
+              cell&rsquo;s address from the receipt.{" "}
+              <a
+                className="mono"
+                href={`${appChain.blockExplorers?.default.url ?? ""}/tx/${txHash}`}
+                target="_blank"
+                rel="noreferrer"
+              >
+                {txHash}
+              </a>{" "}
+              — your wish is open; find it under{" "}
+              <Link href="/explore">all wishes</Link>.
+            </p>
+          )}
           {cellAddress ? (
             <div className="row">
               <Link href={`/wish/${cellAddress}`} className="pill pillPrimary">
@@ -768,6 +820,7 @@ export function CreateFlow() {
                   setFullStory("");
                   setPreview(null);
                   setCellAddress("");
+                  setTxHash("");
                   setSealed(false);
                   setTokenize(false);
                   setFallback("");
