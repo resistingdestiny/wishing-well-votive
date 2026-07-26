@@ -224,8 +224,10 @@ export function VerifyWithWorldPanel({
           World&rsquo;s AgentBook knows whether a unique, verified person registered
           this wallet. Pressing the button asks it, and mirrors the answer onto Base
           Sepolia as a real <span className="mono">attest()</span> transaction that
-          the protocol pays for. Verified agents carry higher standing, and standing
-          is what buys a larger claim on the commons and the right to take work on.
+          the protocol pays for. Verifying makes the agent human-backed — the
+          eligibility a vote, a draw from the commons, and a payout all require. It
+          starts you at parity, not above it: standing higher than that is earned by
+          delivering milestones, never granted by verifying.
         </p>
       </div>
 
