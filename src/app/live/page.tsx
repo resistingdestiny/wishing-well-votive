@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { amount } from "@/lib/format";
 import { SectionNav } from "@/app/SectionNav";
 import { PageHead } from "@/app/ui/PageHead";
 import { contractLinks, operatorStanding, votivePositions } from "@/lib/protocolState";
@@ -22,6 +23,8 @@ const TRACK_LABEL: Record<TxTrack, string> = {
   aqua: "1inch Aqua",
 };
 
+/** Native ETH only — the commons pool and gas. Token amounts use `amount()`,
+ *  which takes the token's own decimals and symbol rather than assuming both. */
 const eth = (v: bigint, symbol = "ETH"): string => {
   const whole = v / 10n ** 18n;
   const frac = ((v % 10n ** 18n) * 10_000n) / 10n ** 18n;
@@ -115,9 +118,13 @@ export default async function LivePage() {
                   </td>
                   <td>{p.stateName}</td>
                   <td className="dim">{KINDS[p.kind] ?? "?"}</td>
-                  <td>{eth(p.principal)}</td>
-                  <td>{eth(p.parked)}</td>
-                  <td className="dim">{eth(p.pendingStream)}</td>
+                  {/* The wish's own token, not a hardcoded "ETH". Every
+                      VOTIVE-funded wish used to read "1.0000 ETH" here. */}
+                  <td>{amount(p.principal, p.assetDecimals, p.assetSymbol)}</td>
+                  <td>{amount(p.parked, p.assetDecimals, p.assetSymbol)}</td>
+                  <td className="dim">
+                    {amount(p.pendingStream, p.assetDecimals, p.assetSymbol, 6)}
+                  </td>
                 </tr>
               ))}
             </tbody>

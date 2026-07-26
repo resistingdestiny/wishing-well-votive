@@ -37,7 +37,10 @@ test.describe("the pages a judge will be shown", () => {
     // ABIs had drifted this would be empty or throw rather than list a state.
     const positions = page.locator("table.grid").first();
     await expect(positions).toContainText(/Waiting|Attempting|Fulfilled/);
-    await expect(positions).toContainText("ETH");
+    // The wish's OWN token. This used to assert "ETH", which passed only because
+    // the column hardcoded that symbol for every row — so VOTIVE-funded wishes
+    // displayed as "1.0000 ETH" and the test agreed with them.
+    await expect(positions).toContainText(/VOTIVE|vUSD/);
   });
 
   test("the operator panel reflects on-chain standing, not a cached copy", async ({ page }) => {
